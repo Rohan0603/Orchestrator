@@ -1192,3 +1192,21 @@ Current package inspection found exactly one `better_sqlite3.node`, zero
 detected environment/database/credential artifacts, and an unsigned
 `Orchestrator.exe`. Packaged launch was not retried after the observed
 Application Control block.
+
+### Official API and diagnostic references
+
+- Microsoft Learn, [Job Objects](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects):
+  ownership requires explicit Win32 job creation and process assignment;
+  descendants are covered by default unless breakaway limits apply.
+- Microsoft Learn, [jobapi2.h](https://learn.microsoft.com/en-us/windows/win32/api/jobapi2/):
+  documents `CreateJobObjectW`, `AssignProcessToJobObject`, and
+  `TerminateJobObject`; no equivalent API is exposed by the installed
+  Node.js/Electron JavaScript surface.
+- Electron, [webFrameMain](https://www.electronjs.org/docs/latest/api/web-frame-main):
+  documents frame lookup and frame execution. The attempted production
+  fixture could not reach a stable child frame because the existing
+  `will-frame-navigate` guard blocks subframe navigation before preload/IPC
+  exposure. Subframe sender rejection therefore remains **UNVERIFIED**.
+- Node.js, [child_process](https://nodejs.org/api/child_process.html):
+  documents process spawning, but not Windows Job Object ownership or
+  descendant termination semantics.
