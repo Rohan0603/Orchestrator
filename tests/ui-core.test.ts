@@ -50,6 +50,15 @@ test("UI creates tasks, prevents duplicate fixture runs, and reports blocked acc
     });
     assert.equal(ready, "Database: connected");
 
+    await window.webContents.executeJavaScript(
+      "document.querySelectorAll('.nav-link')[1]?.click()"
+    );
+    await waitFor(async () => {
+      const present = await window.webContents.executeJavaScript(
+        "Boolean(document.querySelector('#task-form'))"
+      ) as boolean;
+      return present ? present : undefined;
+    });
     await window.webContents.executeJavaScript(`
       document.querySelector('[name=title]').value = 'UI fixture task';
       document.querySelector('[name=description]').value = 'Created through renderer';
@@ -123,8 +132,6 @@ test("UI creates tasks, prevents duplicate fixture runs, and reports blocked acc
       assert.equal(before.value?.length, 0);
       assert.equal(after.value?.length, 0);
     }
-  } catch (error) {
-    throw error;
   } finally {
     for (const window of BrowserWindow.getAllWindows()) {
       if (!window.isDestroyed()) window.destroy();

@@ -14,6 +14,12 @@ export function evaluateAcceptance(input: AcceptanceInput): AcceptanceRecord {
       reason: "Acceptance criteria or deterministic checks failed"
     };
   }
+  if (input.independentReview === "failed") {
+    return {
+      decision: "rejected",
+      reason: "Independent review rejected the candidate"
+    };
+  }
   if (!input.evidenceComplete || input.independentReview !== "passed") {
     return {
       decision: "blocked",

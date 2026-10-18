@@ -77,9 +77,9 @@ function scalar<T extends Record<string, unknown>>(
 test("real SQLite creates schema, enables foreign keys, and reruns migrations", () => {
   withDatabase((database) => {
     assert.equal(database.pragma("foreign_keys", { simple: true }), 1);
-    assert.equal(scalar<{ version: number }>(database, "SELECT version FROM schema_version").version, 4);
+    assert.equal(scalar<{ version: number }>(database, "SELECT version FROM schema_version").version, 5);
     assert.doesNotThrow(() => applyMigrations(database));
-    assert.equal(scalar<{ version: number }>(database, "SELECT version FROM schema_version").version, 4);
+    assert.equal(scalar<{ version: number }>(database, "SELECT version FROM schema_version").version, 5);
     for (const table of ["tasks", "approvals", "policy_decisions", "dispatch_intents", "evidence_records"]) {
       assert.ok(
         database.prepare(
@@ -157,7 +157,7 @@ test("real SQLite transaction rollback leaves no partial row", () => {
       const restored = openDatabase(backupPath);
       try {
         assert.equal(new TaskRepository(restored).list()[0].id, task.id);
-        assert.equal(scalar<{ version: number }>(restored, "SELECT version FROM schema_version").version, 4);
+        assert.equal(scalar<{ version: number }>(restored, "SELECT version FROM schema_version").version, 5);
         assert.equal(restored.pragma("foreign_keys", { simple: true }), 1);
       } finally {
         restored.close();
@@ -331,6 +331,37 @@ test("run creation rolls back when task foreign key is invalid", () => {
       scalar<{ count: number }>(database, "SELECT count(*) AS count FROM attempts").count,
       0
     );
+  });
+
+  test("run repository enforces one active run and valid state transitions", () => {
+    withDatabase((database) => {
+      const task = new TaskRepository(database).create({
+        title: "Single active run",
+        description: "Prevent concurrent runs",
+        acceptanceCriteria: ["one active run"],
+        riskTier: 1
+      });
+      const runs = new RunRepository(database);
+      const created = runs.createRun(task.id, null);
+      assert.throws(
+        () => runs.createRun(task.id, null),
+        (error: unknown) =>
+          error instanceof PersistenceError &&
+          error.message === "Run creation failed"
+      );
+      assert.throws(
+        () => runs.transition(created.run.id, "accepted", "none"),
+        (error: unknown) =>
+          error instanceof PersistenceError &&
+          error.cause instanceof Error &&
+          error.cause.message.includes("Invalid run transition")
+      );
+      runs.transition(created.run.id, "ready", "none");
+      assert.equal(
+        scalar<{ state: string }>(database, "SELECT state FROM runs WHERE id = ?", created.run.id).state,
+        "ready"
+      );
+    });
   });
 });
 

@@ -143,6 +143,19 @@ const migrations: readonly string[] = [
       reason TEXT NOT NULL,
       evaluated_at TEXT NOT NULL
     );
+  `,
+  `
+    CREATE TABLE IF NOT EXISTS cancellation_requests (
+      id TEXT PRIMARY KEY NOT NULL,
+      run_id TEXT NOT NULL REFERENCES runs(id),
+      attempt_id TEXT NOT NULL REFERENCES attempts(id),
+      dispatch_id TEXT NOT NULL,
+      state TEXT NOT NULL,
+      requested_at TEXT NOT NULL,
+      observed_at TEXT,
+      process_ownership_verified INTEGER NOT NULL CHECK (process_ownership_verified IN (0, 1)),
+      error_json TEXT
+    );
   `
 ];
 

@@ -5,9 +5,10 @@
   "description": "Local Agentic Development Orchestrator",
   "main": "dist/main/main.js",
   "scripts": {
+    "build:native-helper": "node scripts/build-native-helper.mjs",
     "build": "tsc --build && node scripts/copy-renderer-assets.mjs",
-    "test": "tsc -p tsconfig.test.json && node scripts/run-electron-tests.mjs --expected=11 dist-test/tests/deterministic.test.js && node scripts/run-electron-tests.mjs --expected=4 dist-test/tests/conformance.test.js && node scripts/run-electron-tests.mjs --expected=5 dist-test/tests/execution.test.js && node scripts/run-electron-tests.mjs --expected=8 dist-test/tests/sqlite-runtime.test.js && node scripts/run-electron-tests.mjs --expected=1 dist-test/tests/ipc-security.test.js && node scripts/run-electron-tests.mjs --expected=1 dist-test/tests/ui-core.test.js",
-    "package:win": "npm run build && electron-packager . Orchestrator --platform=win32 --arch=x64 --out=out --overwrite --asar",
+    "test": "tsc -p tsconfig.test.json && node scripts/run-electron-tests.mjs --expected=12 dist-test/tests/deterministic.test.js && node scripts/run-electron-tests.mjs --expected=4 dist-test/tests/conformance.test.js && node scripts/run-electron-tests.mjs --expected=7 dist-test/tests/execution.test.js && node scripts/run-electron-tests.mjs --expected=8 dist-test/tests/sqlite-runtime.test.js && node scripts/run-electron-tests.mjs --expected=1 dist-test/tests/ipc-security.test.js && node scripts/run-electron-tests.mjs --expected=1 dist-test/tests/ui-core.test.js",
+    "package:win": "npm run build:native-helper && npm run build && electron-packager . Orchestrator --platform=win32 --arch=x64 --out=out --overwrite --asar --extra-resource=dist-native\\job-object-helper.exe",
     "start": "electron ."
   },
   "dependencies": {

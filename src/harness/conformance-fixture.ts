@@ -91,10 +91,13 @@ export class ConformanceFixtureAdapter implements HarnessAdapter {
   }
 
   public async requestCancellation(
-    _correlation: Correlation,
+    correlation: Correlation,
     _deadlineAt: string
   ): Promise<AdapterResult<CancellationReport>> {
-    return this.plan.cancellationResult;
+    const result = this.plan.cancellationResult;
+    return result.ok
+      ? { ok: true, value: { ...result.value, correlation } }
+      : { ok: false, error: { ...result.error, correlation } };
   }
 
   public async reconcile(

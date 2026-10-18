@@ -1,6 +1,7 @@
 # MVP acceptance matrix
 
-Audit date: 2026-10-18. Audited implementation commit: `0fb0070`.
+Audit date: 2026-10-18. Audited implementation checkpoint: `6e1d3c5`;
+phase-3 working-tree evidence is documented separately.
 
 | ID | Requirement | Verification | Actual result | Evidence | Status | Remediation |
 |---|---|---|---|---|---|---|

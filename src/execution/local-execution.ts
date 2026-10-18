@@ -200,15 +200,60 @@ export async function executeLocalRun(
     terminal = outcome;
     resolveTerminal?.(outcome);
   });
+  let deadlineReached = false;
+  let deadlineTimer: NodeJS.Timeout | undefined;
   if (!terminal) {
     const remainingMs = Math.max(0, Date.parse(input.deadlineAt) - Date.now());
-    terminal = await Promise.race([
-      terminalReady,
-      new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), remainingMs))
-    ]);
+    const deadline = new Promise<undefined>((resolve) =>
+      deadlineTimer = setTimeout(() => {
+        deadlineReached = true;
+        resolve(undefined);
+      }, remainingMs)
+    );
+    terminal = await Promise.race([terminalReady, deadline]);
   }
+  if (deadlineTimer) clearTimeout(deadlineTimer);
   unsubscribeProgress();
   unsubscribeTerminal();
+  if (!terminal) {
+    if (deadlineReached) {
+      const cancellation = await input.adapter.requestCancellation(correlation, input.deadlineAt);
+      runs.recordCancellation(
+        cancellation.ok
+          ? cancellation.value
+          : {
+              correlation,
+              state: "unverified",
+              requestedAt: new Date().toISOString(),
+              observedAt: new Date().toISOString(),
+              processOwnershipVerified: false,
+              error: cancellation.error
+            },
+        correlation.dispatchId
+      );
+      if (cancellation.ok && cancellation.value.state === "completed" && cancellation.value.processOwnershipVerified) {
+        terminal = {
+          kind: "timed_out",
+          correlation,
+          reportedAt: cancellation.value.observedAt ?? new Date().toISOString(),
+          evidence: [],
+          error: null
+        };
+      } else {
+        const reason = cancellation.ok
+          ? "Cancellation did not verify process termination"
+          : cancellation.error.message;
+        runs.recordAttemptOutcome(
+          created.attempt.id,
+          "inconclusive",
+          "recovery_required",
+          "recovery_required",
+          reason
+        );
+        return result(created.run, created.attempt.id, policy, "recovery_required", progressAccepted, progressRejected);
+      }
+    }
+  }
   if (!terminal) {
     runs.recordAttemptOutcome(
       created.attempt.id,

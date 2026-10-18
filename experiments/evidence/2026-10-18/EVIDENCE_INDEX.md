@@ -3,7 +3,8 @@
 Evidence date: 2026-10-18  
 Repository: `Rohan0603/Orchestrator`  
 Branch: `master`  
-Checkout: `37b5f4d` (`docs: update harness hardening evidence`)  
+Checkout baseline: `37b5f4d` (`docs: update harness hardening evidence`)  
+Qualification checkpoint: `6e1d3c5` (`docs: complete MVP qualification handoff`)  
 Platform: Windows x64; Node `v24.19.0`; npm `12.0.2`; Electron `44.9.0`;
 better-sqlite3 `12.11.1`; OpenCode `1.19.0`.
 
@@ -31,10 +32,11 @@ configuration, terminate processes, or claim independent review.
 - [ADAPTER_QUALIFICATION.md](./ADAPTER_QUALIFICATION.md)
 - [EXPERIMENT_RESULTS.md](./EXPERIMENT_RESULTS.md)
 - [RECOVERY_RESULTS.md](./RECOVERY_RESULTS.md)
-- [ACCEPTANCE_AUDIT.md](./ACCEPTANCE_AUDIT.md)
 - [BLOCKERS_AND_GAPS.md](./BLOCKERS_AND_GAPS.md)
 - [RELEASE_READINESS.md](./RELEASE_READINESS.md)
 - [TRIAL_MANIFEST_INDEX.json](./TRIAL_MANIFEST_INDEX.json)
+- [Reuse-first decisions](../../../docs/REUSE_FIRST_DECISIONS.md)
+- [Independent review bundle](../../../docs/INDEPENDENT_REVIEW_BUNDLE.md)
 
 Fresh command-log capture was attempted during this evidence run but the
 organization content policy blocked the package output path. Existing

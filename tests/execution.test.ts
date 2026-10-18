@@ -66,7 +66,10 @@ function action() {
   };
 }
 
-function adapter(terminalKind: "succeeded" | "failed") {
+function adapter(
+  terminalKind: "succeeded" | "failed" | null,
+  cancellationCompleted = false
+) {
   const event = {
     eventId: "progress-1",
     correlation,
@@ -86,23 +89,37 @@ function adapter(terminalKind: "succeeded" | "failed") {
     manifest,
     route,
     progressEvents: [event, event],
-    terminalOutcome: {
-      kind: terminalKind,
-      correlation,
-      reportedAt: "2026-01-01T00:00:01.000Z",
-      evidence: [],
-      error: null
-    },
-    cancellationResult: {
-      ok: false,
-      error: {
-        class: "ambiguous",
-        code: "NOT_USED",
-        message: "Not used in execution test",
-        retryable: false,
-        correlation
-      }
-    },
+    terminalOutcome: terminalKind
+      ? {
+          kind: terminalKind,
+          correlation,
+          reportedAt: "2026-01-01T00:00:01.000Z",
+          evidence: [],
+          error: null
+        }
+      : undefined,
+    cancellationResult: cancellationCompleted
+      ? {
+          ok: true,
+          value: {
+            correlation,
+            state: "completed",
+            requestedAt: "2026-01-01T00:00:00.000Z",
+            observedAt: "2026-01-01T00:00:01.000Z",
+            processOwnershipVerified: true,
+            error: null
+          }
+        }
+      : {
+          ok: false,
+          error: {
+            class: "ambiguous",
+            code: "NOT_USED",
+            message: "Not used in execution test",
+            retryable: false,
+            correlation
+          }
+        },
     reconciliationResult: {
       ok: false,
       error: {
@@ -114,6 +131,7 @@ function adapter(terminalKind: "succeeded" | "failed") {
       }
     }
   });
+
 }
 
 function task(database: Database.Database) {
@@ -124,6 +142,68 @@ function task(database: Database.Database) {
     riskTier: 1
   });
 }
+
+test("deadline requires verified cancellation before terminal persistence", async () => {
+  const scenario = runScenario("succeeded");
+  try {
+    const result = await executeLocalRun(scenario.database, {
+      task: scenario.currentTask,
+      action: action(),
+      approval: null,
+      workspace: workspace(),
+      manifest,
+      route,
+      routeRequirements: requirements(),
+      deadlineAt: new Date(Date.now() + 100).toISOString(),
+      adapter: adapter(null, true)
+    });
+    assert.equal(result.status, "verification");
+    assert.equal(
+      (scenario.database.prepare("SELECT outcome FROM attempts").get() as { outcome: string }).outcome,
+      "timed_out"
+    );
+    assert.deepEqual(
+      scenario.database.prepare(
+        "SELECT state, process_ownership_verified FROM cancellation_requests"
+      ).get(),
+      { state: "completed", process_ownership_verified: 1 }
+    );
+  } finally {
+    scenario.database.close();
+    rmSync(scenario.directory, { recursive: true, force: true });
+  }
+});
+
+test("deadline with unverified cancellation remains recovery-required", async () => {
+  const scenario = runScenario("succeeded");
+  try {
+    const result = await executeLocalRun(scenario.database, {
+      task: scenario.currentTask,
+      action: action(),
+      approval: null,
+      workspace: workspace(),
+      manifest,
+      route,
+      routeRequirements: requirements(),
+      deadlineAt: new Date(Date.now() + 100).toISOString(),
+      adapter: adapter(null)
+    });
+    assert.equal(result.status, "recovery_required");
+    assert.equal(
+      (scenario.database.prepare("SELECT outcome FROM attempts").get() as { outcome: string }).outcome,
+      "inconclusive"
+    );
+    assert.deepEqual(
+      scenario.database.prepare(
+        "SELECT state, process_ownership_verified FROM cancellation_requests"
+      ).get(),
+      { state: "unverified", process_ownership_verified: 0 }
+    );
+  } finally {
+    scenario.database.close();
+    rmSync(scenario.directory, { recursive: true, force: true });
+  }
+});
 
 function workspace() {
   return {

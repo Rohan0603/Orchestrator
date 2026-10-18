@@ -108,8 +108,8 @@ export interface RecoveryRecord {
 const transitions: Readonly<Record<RunState, readonly RunState[]>> = {
   created: ["awaiting_approval", "ready", "blocked"],
   awaiting_approval: ["ready", "blocked"],
-  ready: ["running", "blocked"],
-  running: ["verification", "recovery_required", "blocked"],
+  ready: ["running", "recovery_required", "blocked"],
+  running: ["verification", "rejected", "recovery_required", "blocked"],
   verification: ["review", "rejected", "blocked", "inconclusive"],
   review: ["accepted", "repair", "rejected", "blocked", "inconclusive"],
   repair: ["running", "blocked", "recovery_required"],

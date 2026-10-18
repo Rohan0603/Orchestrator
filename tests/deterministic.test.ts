@@ -284,6 +284,27 @@ test("acceptance blocks missing independent review and accepts complete evidence
   );
 });
 
+test("acceptance rejects reviewer findings and blocks inconclusive review", () => {
+  assert.deepEqual(
+    evaluateAcceptance({
+      criteriaVerified: true,
+      deterministicChecksPassed: true,
+      evidenceComplete: true,
+      independentReview: "failed"
+    }),
+    { decision: "rejected", reason: "Independent review rejected the candidate" }
+  );
+  assert.deepEqual(
+    evaluateAcceptance({
+      criteriaVerified: true,
+      deterministicChecksPassed: true,
+      evidenceComplete: true,
+      independentReview: "inconclusive"
+    }),
+    { decision: "blocked", reason: "Required acceptance evidence is incomplete" }
+  );
+});
+
 test("uncertain terminal outcomes require recovery before acceptance", () => {
   const correlation = progress(1).correlation;
   const outcome = (

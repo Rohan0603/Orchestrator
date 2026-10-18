@@ -2,9 +2,14 @@
 
 1. **Critical — independent review unavailable.** Needed: genuinely separate
    reviewer, frozen rubric, findings, and bounded repair evidence.
-2. **Critical — process ownership/cancellation unverified.** Needed: supported
-   Windows Job Object or equivalent on the actual Electron stack, with
-   ownership, graceful cancellation, escalation, and verified termination.
+2. **Critical — process ownership/cancellation unverified.** Microsoft
+   documents Windows Job Objects as the process-group mechanism:
+   `CreateJobObject` → `AssignProcessToJobObject` → `IsProcessInJob` /
+   `TerminateJobObject`. Current Electron/Node stack has no qualified binding
+   for those APIs. Needed: authorized native or maintained binding integrated
+   on the actual Electron stack, with ownership, graceful cancellation,
+   escalation, and verified termination evidence. Until then the adapter
+   refuses cancellation and unsafe redispatch remains blocked.
 3. **High — restart/deadline recovery unverified.** Depends on owned process
    identity and safe reconciliation.
 4. **High — provider identity not confirmed.** Adapter/configuration identity

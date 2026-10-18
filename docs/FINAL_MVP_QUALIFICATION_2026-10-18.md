@@ -3,8 +3,8 @@
 Audit date: 2026-10-18  
 Local checkout: `C:\Users\ponna\Project\Orchestrator`  
 Branch: `master`  
-HEAD: `37b5f4db3341c115f4b42e421e8076fccb4bed18`  
-Working tree: modified and untracked files present; no staged changes.  
+HEAD: `6e1d3c5` (`docs: complete MVP qualification handoff`)  
+Working tree: modified; no staged changes.  
 Execution model: one sequential lead agent; this report is self-review, not
 independent review.
 
@@ -32,8 +32,9 @@ documents, and the current uncommitted diff. Public-branch state was not used
 as a substitute for local checkout state.
 
 The actual Ponytail skill was already loaded in session state and applied as
-reuse-first guidance. No dependency, provider, credential, native binding,
-framework migration, live-worker UI route, commit, push, or destructive
+reuse-first guidance. Reuse decisions are recorded in
+`docs/REUSE_FIRST_DECISIONS.md`. No dependency, provider, credential, native
+binding, framework migration, live-worker UI route, push, or destructive
 process action was performed.
 
 ## 2. Baseline and remediation
@@ -190,6 +191,8 @@ unproven.
 - [Trial manifest index](../experiments/evidence/2026-10-18/TRIAL_MANIFEST_INDEX.json)
 - [Validation evidence](VALIDATION_EVIDENCE.md)
 - [Acceptance matrix](MVP_ACCEPTANCE_MATRIX.md)
+- [Reuse-first decisions](REUSE_FIRST_DECISIONS.md)
+- [Independent review bundle](INDEPENDENT_REVIEW_BUNDLE.md)
 
 ## 10. Remaining blockers and objective exit criteria
 

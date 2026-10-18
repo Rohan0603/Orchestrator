@@ -1,6 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
+import type { CancellationReport } from "../harness/adapter-contract";
 import type { Attempt, Run } from "../shared/domain";
+import { assertRunTransition } from "../shared/domain";
 import { PersistenceError } from "./database";
 
 interface RunRow {
@@ -92,6 +94,16 @@ export class RunRepository {
     };
     try {
       this.database.transaction(() => {
+        const active = this.database
+          .prepare(
+            `SELECT 1
+             FROM runs
+             WHERE task_id = ?
+               AND state NOT IN ('accepted', 'rejected', 'blocked', 'inconclusive')
+             LIMIT 1`
+          )
+          .get(taskId);
+        if (active) throw new Error("Task already has an active run");
         this.database
           .prepare(
             `INSERT INTO runs (id, task_id, state, route_id, recovery_state, created_at)
@@ -168,9 +180,16 @@ export class RunRepository {
 
   public transition(runId: string, state: Run["state"], recoveryState: Run["recoveryState"]): void {
     try {
-      const result = this.database
-        .prepare("UPDATE runs SET state = ?, recovery_state = ? WHERE id = ?")
-        .run(state, recoveryState, runId);
+      const result = this.database.transaction(() => {
+        const current = this.database
+          .prepare("SELECT state FROM runs WHERE id = ?")
+          .get(runId) as { state: Run["state"] } | undefined;
+        if (!current) throw new Error("Run not found");
+        assertRunTransition(current.state, state);
+        return this.database
+          .prepare("UPDATE runs SET state = ?, recovery_state = ? WHERE id = ?")
+          .run(state, recoveryState, runId);
+      })();
       if (result.changes !== 1) throw new Error("Run not found");
       this.appendAudit("run.state_changed", { runId, state, recoveryState });
     } catch (error) {
@@ -188,9 +207,14 @@ export class RunRepository {
     try {
       this.database.transaction(() => {
         const attempt = this.database
-          .prepare("SELECT run_id FROM attempts WHERE id = ?")
-          .get(attemptId) as { run_id: string } | undefined;
+          .prepare(
+            `SELECT attempts.run_id, runs.state
+             FROM attempts JOIN runs ON runs.id = attempts.run_id
+             WHERE attempts.id = ?`
+          )
+          .get(attemptId) as { run_id: string; state: Run["state"] } | undefined;
         if (!attempt) throw new Error("Attempt not found");
+        assertRunTransition(attempt.state, runState);
         const attemptResult = this.database
           .prepare("UPDATE attempts SET outcome = ?, worker_report = ? WHERE id = ? AND outcome = 'pending'")
           .run(outcome, workerReport, attemptId);
@@ -210,6 +234,34 @@ export class RunRepository {
       })();
     } catch (error) {
       throw new PersistenceError("Attempt outcome persistence failed", { cause: error });
+    }
+  }
+
+  public recordCancellation(
+    report: CancellationReport,
+    dispatchId: string
+  ): void {
+    try {
+      this.database
+        .prepare(
+          `INSERT INTO cancellation_requests
+            (id, run_id, attempt_id, dispatch_id, state, requested_at, observed_at,
+             process_ownership_verified, error_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          randomUUID(),
+          report.correlation.runId,
+          report.correlation.attemptId,
+          dispatchId,
+          report.state,
+          report.requestedAt,
+          report.observedAt,
+          report.processOwnershipVerified ? 1 : 0,
+          report.error ? JSON.stringify(report.error) : null
+        );
+    } catch (error) {
+      throw new PersistenceError("Cancellation report persistence failed", { cause: error });
     }
   }
 
