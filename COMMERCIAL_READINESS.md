@@ -1028,6 +1028,11 @@ side effect.
 | Acceptance of successful work | Explicitly remains false without verified acceptance evidence | **BLOCKED** |
 | Real provider/worker execution | Not launched | **NOT TESTED** |
 
+The Electron UI now exposes this fixture path through the narrow
+`tasks:run-fixture` IPC channel. It is explicitly limited to risk-tier 1 and
+returns run/attempt IDs, progress counts, terminal status, and the
+`accepted: false` result. No real worker route is exposed.
+
 ### P2.0 failure injection and recovery
 
 The implemented coverage exercises transaction rollback, closed-database

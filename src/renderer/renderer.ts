@@ -24,6 +24,21 @@ async function refresh(): Promise<void> {
   for (const task of taskResult.value) {
     const item = document.createElement("li");
     item.textContent = `${task.title} [${task.status}]`;
+    if (task.riskTier === 1) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = "Run local fixture";
+      button.addEventListener("click", async () => {
+        const result = await window.orchestrator.runFixture(task.id);
+        const runResult = document.querySelector<HTMLParagraphElement>("#run-result");
+        if (runResult) {
+          runResult.textContent = result.ok
+            ? `Run ${result.value.status}; accepted: ${result.value.accepted}; progress: ${result.value.progressAccepted} accepted, ${result.value.progressRejected} rejected.`
+            : `Run blocked: ${result.error.message}`;
+        }
+      });
+      item.append(" ", button);
+    }
     tasks.append(item);
   }
 }

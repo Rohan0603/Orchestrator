@@ -120,6 +120,13 @@ npm test
 npm start
 ```
 
+After startup, create a task with one or more acceptance criteria. Risk-tier 1
+tasks expose **Run local fixture**. This executes only the deterministic local
+fixture adapter through policy, route, durable dispatch, progress, and terminal
+classification. It does not invoke OpenCode, a provider, a shell, or a real
+worker. Successful fixture work stops at `verification` until independent
+orchestrator acceptance evidence exists.
+
 `npm test` compiles all suites, then runs ten deterministic contract tests,
 two adapter conformance tests, three local execution tests, and seven real
 SQLite tests under Electron 44. The Electron-targeted native SQLite

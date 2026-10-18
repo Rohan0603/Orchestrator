@@ -12,6 +12,15 @@ export interface ApplicationStatus {
   readonly database: "connected" | "unavailable";
 }
 
+export interface FixtureRunSummary {
+  readonly runId: string;
+  readonly attemptId: string;
+  readonly status: "blocked" | "rejected" | "verification" | "recovery_required";
+  readonly accepted: false;
+  readonly progressAccepted: number;
+  readonly progressRejected: number;
+}
+
 export interface IpcSuccess<T> {
   readonly ok: true;
   readonly value: T;
@@ -31,6 +40,7 @@ export interface OrchestratorApi {
   getStatus(): Promise<IpcResult<ApplicationStatus>>;
   listTasks(): Promise<IpcResult<readonly Task[]>>;
   createTask(input: CreateTaskInput): Promise<IpcResult<Task>>;
+  runFixture(taskId: string): Promise<IpcResult<FixtureRunSummary>>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
