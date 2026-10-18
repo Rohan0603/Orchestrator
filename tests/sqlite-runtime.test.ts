@@ -148,6 +148,12 @@ test("real SQLite transaction rollback leaves no partial row", () => {
         riskTier: 1
       });
       await backupDatabase(source, backupPath);
+      await assert.rejects(
+        () => backupDatabase(source, backupPath),
+        (error: unknown) =>
+          error instanceof PersistenceError &&
+          error.message === "Database backup destination already exists"
+      );
       const restored = openDatabase(backupPath);
       try {
         assert.equal(new TaskRepository(restored).list()[0].id, task.id);

@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { existsSync } from "node:fs";
 import { PersistenceError } from "./database";
 
 export async function backupDatabase(
@@ -7,6 +8,9 @@ export async function backupDatabase(
 ): Promise<void> {
   if (!destinationPath.trim()) {
     throw new PersistenceError("Database backup destination is required");
+  }
+  if (existsSync(destinationPath)) {
+    throw new PersistenceError("Database backup destination already exists");
   }
   try {
     await database.backup(destinationPath);
