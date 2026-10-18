@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none';"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Orchestrator</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Orchestrator</h1>
+      <p id="status" role="status">Loading application status...</p>
+      <section aria-labelledby="tasks-heading">
+        <h2 id="tasks-heading">Tasks</h2>
+        <form id="task-form">
+          <label>Title <input name="title" maxlength="200" required /></label>
+          <label>Description <textarea name="description" maxlength="10000"></textarea></label>
+          <label>Acceptance criterion <input name="criterion" required /></label>
+          <button type="submit">Create task</button>
+        </form>
+        <p id="task-error" role="alert"></p>
+        <ul id="tasks"><li>No tasks yet.</li></ul>
+      </section>
+    </main>
+    <script src="./renderer.js"></script>
+  </body>
+</html>
