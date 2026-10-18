@@ -77,6 +77,9 @@
   message, reviewed scope, and remaining uncommitted changes.
 - A commit is a source-control checkpoint, not proof of builds, tests, security
   qualification, runtime correctness, or independent review.
+- Use repository-owner Git identity for future commits. Do not automatically
+  append a generic Copilot `Co-authored-by` trailer. Preserve existing
+  attribution and state AI assistance truthfully in project records.
 - Do not amend, rebase, squash, reset, force-push, rewrite history, configure
   remotes, or push without separate explicit authorization. Never use commits
   to bypass protected-branch or approval policies.

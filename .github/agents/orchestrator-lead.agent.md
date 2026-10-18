@@ -70,6 +70,12 @@ For every task, record objective, dependencies, permitted files, non-goals, acce
   security qualification, runtime correctness, or independent review. If stage
   scope cannot be isolated safely, stop before staging and report the blocker.
 
+## Git authorship
+
+- Use repository-owner Git identity for future commits. Do not automatically
+  append a generic Copilot `Co-authored-by` trailer. Preserve existing
+  attribution and report AI assistance truthfully.
+
 ## Commercial readiness and validation evidence
 
 - Maintain `COMMERCIAL_READINESS.md` from `MVP_plan.md` as source of truth for
