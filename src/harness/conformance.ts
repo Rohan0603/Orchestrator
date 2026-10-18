@@ -5,7 +5,7 @@ import type {
   RouteIdentity
 } from "./adapter-contract";
 
-export type ConformanceStatus = "pass" | "fail" | "blocked";
+export type ConformanceStatus = "pass" | "fail" | "blocked" | "inconclusive";
 
 export interface ConformanceCheck {
   readonly id: string;
@@ -71,6 +71,13 @@ export const REQUIRED_CONFORMANCE_CHECKS: readonly ConformanceCheck[] = [
     requiredEvidence: ["Repeated idempotency-key trace", "Single execution correlation"],
     status: "blocked",
     result: "Requires an authorized adapter exercise"
+  },
+  {
+    id: "dispatch-eligibility",
+    subject: "Policy-first dispatch eligibility and durable intent before side effect",
+    requiredEvidence: ["Blocked policy/approval/workspace cases", "Persisted intent before adapter call"],
+    status: "blocked",
+    result: "Requires authorized source/runtime integration review"
   }
 ];
 

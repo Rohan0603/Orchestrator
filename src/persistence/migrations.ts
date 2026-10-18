@@ -87,6 +87,53 @@ const migrations: readonly string[] = [
       reason_code TEXT NOT NULL,
       created_at TEXT NOT NULL
     );
+  `,
+  `
+    CREATE TABLE IF NOT EXISTS dispatch_intents (
+      id TEXT PRIMARY KEY NOT NULL,
+      dispatch_id TEXT NOT NULL UNIQUE,
+      idempotency_key TEXT NOT NULL UNIQUE,
+      run_id TEXT NOT NULL REFERENCES runs(id),
+      attempt_id TEXT NOT NULL REFERENCES attempts(id),
+      task_id TEXT NOT NULL REFERENCES tasks(id),
+      route_json TEXT NOT NULL,
+      authorization_json TEXT NOT NULL,
+      deadline_at TEXT NOT NULL,
+      state TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS progress_cursors (
+      dispatch_id TEXT PRIMARY KEY NOT NULL REFERENCES dispatch_intents(dispatch_id),
+      run_id TEXT NOT NULL REFERENCES runs(id),
+      attempt_id TEXT NOT NULL REFERENCES attempts(id),
+      last_sequence INTEGER NOT NULL,
+      event_ids TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS progress_events (
+      event_id TEXT PRIMARY KEY NOT NULL,
+      dispatch_id TEXT NOT NULL REFERENCES dispatch_intents(dispatch_id),
+      run_id TEXT NOT NULL REFERENCES runs(id),
+      attempt_id TEXT NOT NULL REFERENCES attempts(id),
+      sequence INTEGER NOT NULL,
+      kind TEXT NOT NULL,
+      payload_json TEXT NOT NULL,
+      occurred_at TEXT NOT NULL,
+      UNIQUE (dispatch_id, sequence)
+    );
+    CREATE TABLE IF NOT EXISTS evidence_records (
+      id TEXT PRIMARY KEY NOT NULL,
+      run_id TEXT NOT NULL REFERENCES runs(id),
+      attempt_id TEXT NOT NULL REFERENCES attempts(id),
+      event_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      provenance TEXT NOT NULL,
+      uri TEXT,
+      content_hash TEXT,
+      captured_at TEXT NOT NULL,
+      status TEXT NOT NULL,
+      independently_verified INTEGER NOT NULL CHECK (independently_verified IN (0, 1)),
+      completeness_note TEXT
+    );
   `
 ];
 

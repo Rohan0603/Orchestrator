@@ -78,6 +78,30 @@ identity, progress and terminal events, cancellation/reconciliation state,
 and artifact/evidence provenance. This stage adds no execution records or
 migration because no adapter is connected.
 
+## Stage 4 dispatch and evidence boundary
+
+`src/dispatch/dispatch-contract.ts` defines single-worker dispatch eligibility.
+It requires valid task criteria, dispatchable lifecycle state, pending attempt,
+allowed or exact-approved policy, confirmed workspace, qualified route,
+explicit route identity, satisfied prerequisites, future deadline, and a
+repair-cycle count within the initial-attempt-plus-two-repairs bound. Existing
+dispatch intent blocks duplicate dispatch. Persisted intent must precede any
+future adapter call.
+
+`src/evidence/evidence.ts` separates worker/adapter claims from
+orchestrator-verified evidence. Evidence status, provenance, content identity,
+capture time, completeness, and independent verification are explicit.
+Missing, incomplete, invalid, or unverified evidence is not acceptable proof.
+`src/persistence/dispatch-repository.ts` provides main-process persistence
+boundaries for intents, progress cursors/events, and evidence records.
+Migration/runtime behavior remains unvalidated.
+
+Progress events require matching correlation and strictly increasing sequence;
+duplicates and out-of-order events are non-success dispositions. Failed,
+cancelled, timed-out, disconnected, or inconclusive worker outcomes do not
+become acceptance. Disconnected or ambiguous outcomes remain recovery-required
+and cannot trigger automatic redispatch.
+
 ## Setup
 
 Install dependencies with authorized npm access, then use the existing scripts:
