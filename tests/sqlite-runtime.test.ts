@@ -6,6 +6,7 @@ import test from "node:test";
 import Database from "better-sqlite3";
 import { createDispatchRecord, validateProgressEvent } from "../src/dispatch/dispatch-contract";
 import { DispatchRepository } from "../src/persistence/dispatch-repository";
+import { backupDatabase } from "../src/persistence/backup";
 import { openDatabase, PersistenceError } from "../src/persistence/database";
 import { applyMigrations } from "../src/persistence/migrations";
 import { PolicyRepository } from "../src/persistence/policy-repository";
@@ -132,6 +133,33 @@ test("real SQLite transaction rollback leaves no partial row", () => {
       })();
     }, /deliberate rollback/);
     assert.equal(database.prepare("SELECT 1 FROM tasks WHERE id = ?").get("rollback-task"), undefined);
+  });
+
+  test("SQLite backup restores schema and durable task state", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "orchestrator-backup-"));
+    const sourcePath = join(directory, "source.db");
+    const backupPath = join(directory, "backup.db");
+    const source = openDatabase(sourcePath);
+    try {
+      const task = new TaskRepository(source).create({
+        title: "Backup task",
+        description: "Restore this task",
+        acceptanceCriteria: ["restored"],
+        riskTier: 1
+      });
+      await backupDatabase(source, backupPath);
+      const restored = openDatabase(backupPath);
+      try {
+        assert.equal(new TaskRepository(restored).list()[0].id, task.id);
+        assert.equal(scalar<{ version: number }>(restored, "SELECT version FROM schema_version").version, 4);
+        assert.equal(restored.pragma("foreign_keys", { simple: true }), 1);
+      } finally {
+        restored.close();
+      }
+    } finally {
+      source.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });
 

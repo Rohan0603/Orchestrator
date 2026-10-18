@@ -39,8 +39,9 @@ policy-decision, workspace-target, audit, outbox, evidence, and recovery
 tables. Migration or transaction failure is surfaced as an error; no success
 fallback is used.
 
-Crash consistency, migration qualification, backup guarantees, and recovery
-reliability are not verified by this stage.
+Crash consistency, backup retention guarantees, and full recovery reliability
+are not verified by this stage. SQLite backup/restore integrity is covered by
+the Electron test suite.
 
 Policy decisions and approval records remain distinct from execution outcomes.
 Missing capabilities, evidence, prerequisites, invalid context, expired
@@ -142,8 +143,8 @@ after fixture launch acknowledgement, and before terminal persistence. Each
 case records `recovery_required` and does not replay its dispatch intent.
 
 `npm test` compiles all suites, then runs eleven deterministic contract tests,
-two adapter conformance tests, five local execution/restart tests, seven real
-SQLite tests, and one real Electron second-WebContents IPC test: 26 tests total. The
+two adapter conformance tests, five local execution/restart tests, eight real
+SQLite tests, and one real Electron second-WebContents IPC test: 27 tests total. The
 Electron-targeted native SQLite
 binding cannot load under ordinary Node.js; use `npm test` rather than invoking
 the compiled tests with `node --test`.

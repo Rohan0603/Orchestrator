@@ -15,8 +15,9 @@ blocked acceptance decision when independent review is unavailable.
   unqualified.
 - Windows process ownership and verified cancellation are not qualified.
 - Independent review execution and repair comparison are unavailable.
-- Backup/restore, clean-machine installation, packaging, and commercial
-  qualification are not established.
+- Backup/restore integrity now passes for a disposable SQLite database;
+  retention, active-workflow restore, clean-machine installation, packaging,
+  and commercial qualification are not established.
 - Nondeterministic task economics and protocol comparisons are not measured.
 - Windows packaging command passed, but clean-machine launch, signing, and
   Application Control compatibility are not validated.

@@ -42,7 +42,7 @@ authority:
 - Successful fixture attempts persist an orchestrator-owned acceptance decision.
   Current decision is `blocked` when independent review or verified evidence is
   unavailable; worker success cannot become acceptance.
-- `npm test`: **PASS**, 26/26.
+- `npm test`: **PASS**, 27/27, including disposable SQLite backup/restore.
 - `npm exec tsc -- --noEmit`: **PASS**.
 
 Process ownership, real-worker dispatch, cancellation, independent review,

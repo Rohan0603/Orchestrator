@@ -14,7 +14,7 @@ Environment for current validation:
 | Command | Exit | Result | Notes |
 |---|---:|---|---|
 | `npm exec tsc -- --noEmit` | 0 | PASS | No diagnostics |
-| `npm test` | 0 | PASS | 26 tests: 11 deterministic, 2 conformance, 5 execution, 7 SQLite, 1 Electron IPC |
+| `npm test` | 0 | PASS | 27 tests: 11 deterministic, 2 conformance, 5 execution, 8 SQLite, 1 Electron IPC |
 | `npm run build` | 0 | PASS | TypeScript build and renderer assets |
 | `npm audit --json` | 0 | PASS | 0 critical, high, moderate, or low vulnerabilities in current install |
 | `git diff --check` | 0 | PASS | No whitespace errors |
@@ -57,7 +57,7 @@ At commit `c1fe36e` on Windows with Node `v24.19.0`, npm `12.0.2`, Electron
 
 | Command | Exit | Result |
 |---|---:|---|
-| `npm test` | 0 | PASS, 26/26 tests |
+| `npm test` | 0 | PASS, 27/27 tests |
 | `npm exec tsc -- --noEmit` | 0 | PASS |
 | `npm run build` | 0 | PASS |
 | `npm audit --json` | 0 | PASS, 0 critical/high/moderate/low |
@@ -67,3 +67,7 @@ At commit `c1fe36e` on Windows with Node `v24.19.0`, npm `12.0.2`, Electron
 Electron emitted non-fatal network-service diagnostics during IPC testing.
 Package creation is not clean-machine launch, signing, or Application Control
 evidence.
+
+The new SQLite backup test proves schema and task-state restoration from a
+disposable backup. It does not prove retention, backup scheduling, active-run
+recovery, or disaster recovery.
