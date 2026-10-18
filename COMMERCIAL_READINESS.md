@@ -431,6 +431,99 @@ authorization for native SQLite runtime tests and disposable database
 creation; explicit authorization to launch and close Electron; and separate
 approval for any dependency, environment-policy, packaging, or remote change.
 
+## P0.5 native setup and runtime validation record
+
+P0.5 began from `84bd2071d087d5b46585e10dbcedea30f23b9cf9`. At start,
+`master` and `origin/master` were both at that commit with a clean worktree.
+This contradicted the prior P0.4 report that local branch was ahead by five;
+current Git state is authoritative. Node was `v24.19.0`, npm `12.0.2`, and
+direct packages remained Electron `38.8.6`, better-sqlite3 `12.11.1`, and
+TypeScript `5.9.3`.
+
+Baseline manifest hashes and copies were captured outside the repository at
+the session evidence path `p05-baseline-20261018-1550`. No secrets or
+`node_modules` copy was made.
+
+### Native setup result
+
+The authorized commands were attempted without changing npm policy:
+
+```text
+npm rebuild electron --foreground-scripts
+npm rebuild better-sqlite3 --foreground-scripts
+```
+
+Both commands returned exit code 0 but emitted:
+
+```text
+npm warn rebuild 2 packages had install scripts blocked because they are not covered by allowScripts.
+```
+
+Read-only policy inspection identified the exact blocked scripts:
+
+```text
+better-sqlite3@12.11.1 (install: node-gyp rebuild)
+electron@38.8.6 (postinstall: node install.js)
+```
+
+`npm config get ignore-scripts` returned `false`, but npm's separate
+`allowScripts` policy still blocked both scripts. `npm install-scripts ls`
+recommended `npm install-scripts approve`; that would change environment
+security policy and was not run. No script-policy bypass or approval was
+authorized under this stage's constraints.
+
+Artifact checks remain:
+
+| Artifact | Result | Status |
+|---|---|---|
+| `node_modules\electron\dist\electron.exe` | Absent | **BLOCKED** |
+| better-sqlite3 `.node` native binding | None found | **BLOCKED** |
+| `package.json` / `package-lock.json` | Unchanged; worktree clean after setup attempts | **PASS** for no tracked dependency change |
+
+Because native outputs remain absent, no Electron process was launched and no
+real SQLite database was opened. SQLite runtime, Electron runtime-security,
+packaging, and native ABI validation are **NOT RUN**.
+
+Safe checks rerun after the blocked setup attempts: `npm test` passed 9/9
+pure tests, and `npm exec tsc -- --noEmit` passed. These results do not change
+the native runtime gate.
+
+### Dependency audit result
+
+Fresh non-remediating `npm audit --json` still reports 0 critical, 2 high,
+4 moderate, 0 low, and 0 info findings. Vulnerable paths are `electron`,
+`extract-zip`, `@electron/get`, `global-agent`, `roarr`, and `sprintf-js`.
+Audit metadata still proposes Electron `44.9.0` as a major-version fix.
+No dependency upgrade, `npm audit fix`, install, or lockfile edit ran.
+
+Dependency remediation is therefore a separate **BLOCKED** gate. Before any
+upgrade, obtain explicit dependency-change authorization, review Electron
+breaking changes and Node/Electron/native ABI compatibility, update manifest
+and lockfile together, rebuild native modules under approved script policy,
+then rerun audit, typecheck, deterministic tests, SQLite, Electron, and
+packaging validation. If native setup cannot be authorized, leave the
+vulnerable dependency set unchanged and report the release block.
+
+### P0.5 status and next authorization
+
+| Gate | Status | Reason |
+|---|---|---|
+| Baseline and rollback evidence | **PASS** | Clean synchronized Git state and manifest backup captured |
+| Native setup | **BLOCKED** | npm `allowScripts` policy blocks required package scripts |
+| SQLite runtime validation | **NOT RUN** | better-sqlite3 binding absent |
+| Electron runtime validation | **NOT RUN** | Electron executable absent |
+| Dependency remediation | **BLOCKED** | Major fix requires separate compatibility and dependency authorization |
+| Packaging | **NOT RUN** | Native runtime unavailable and packaging not authorized |
+| Commercial readiness | **BLOCKED** | Critical runtime, persistence, recovery, adapter, and independent-review gates remain open |
+
+Required next authorization is explicit approval from the authority that
+controls npm `allowScripts` for these exact packages, or an approved clean
+Windows environment where package scripts may execute without bypassing
+policy. That approval must be separate from dependency-upgrade approval.
+After native setup, authorize SQLite runtime tests and Electron startup/security
+checks as separate gates. Do not run `npm install-scripts approve` without
+that policy-owner authorization.
+
 ## Prioritized remediation plan
 
 1. **P0 — Establish deterministic proof.** Authorize and add TypeScript
