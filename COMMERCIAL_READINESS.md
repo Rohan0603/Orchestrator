@@ -127,6 +127,106 @@ Windows environment, verify Electron executable and better-sqlite3 binary
 presence, then run separate SQLite and Electron runtime gates. Do not enable
 scripts or change environment policy as part of this checkpoint.
 
+## P0.3 native runtime readiness assessment
+
+Assessment started from clean `master` at
+`b9985ff33dbb471706b13fe33d158a2a43893c9f`, three commits ahead of
+`origin/master` at `7edc5d251d2022e202f748e83d7818057c7a10b7`. No source,
+dependency, configuration, remote, or environment-policy change was made
+during assessment.
+
+### Executed checks
+
+| Check | Result | Evidence and limit |
+|---|---|---|
+| `npm test` | **PASS** — 9/9, 0 failed | Pure deterministic contracts only; no SQLite or Electron runtime |
+| `npm exec tsc -- --noEmit` | **PASS** — exit 0 | Type safety only; no runtime proof |
+| `npm config get ignore-scripts` | **UNVERIFIED for execution** — returned `false` | Setting permits scripts; it does not prove scripts ran |
+| Installed package inspection | **PASS** — versions and scripts recorded | Electron 38.8.6; better-sqlite3 12.11.1; no install action |
+| `node_modules\electron\dist\electron.exe` | **BLOCKED** — absent | Electron cannot launch from current installation |
+| better-sqlite3 `.node` binary | **BLOCKED** — none found | SQLite repositories cannot open native database binding |
+| `npm audit --json` | **FAIL/BLOCKED** — 2 high, 4 moderate | Findings inspected only; no fix command ran |
+
+### Native blocker separation
+
+Electron needs its `postinstall: node install.js` step to obtain its packaged
+runtime executable. That executable is absent, so `npm start` cannot launch
+the application. better-sqlite3 needs
+`install: prebuild-install || node-gyp rebuild --release` to obtain a
+platform-specific native binding. That binding is absent, so `openDatabase`
+and repository transaction tests cannot run.
+
+Both blockers share one confirmed symptom: native install outputs are absent.
+They do not share one runtime artifact or one proof requirement. Electron
+readiness requires an executable and safe Electron startup checks.
+better-sqlite3 readiness requires a loadable `.node` binding and SQLite
+migration/transaction checks. `ignore-scripts=false` is only configuration
+evidence, not execution evidence. The prior environment restriction blocking
+native install scripts remains the documented cause; this assessment did not
+re-enable or bypass it.
+
+Evidence required to close each blocker:
+
+1. Electron: approved clean Windows install or equivalent approved
+   preparation, executable presence, package integrity, then authorized
+   startup/security checks.
+2. better-sqlite3: approved native install or build, loadable binding
+   presence, then authorized fresh/upgrade migration, rollback, and
+   persistence-failure checks.
+
+Any clean install or rebuild would execute third-party package scripts and
+may download binaries. Electron 44.9.0 would also change dependency major
+version and requires Node `>=22.12.0`; both actions need separate explicit
+authorization. Rollback means restore the lockfile/package manifest and
+recreate dependencies in an approved clean environment; no rollback action
+was needed because no remediation ran.
+
+### Audit identifiers and compatibility
+
+Confirmed audit advisory identifiers include Electron advisories
+`1116060`, `1116111`, `1116259`, `1116320`, `1136551`, `1136552`, `1136559`,
+`1136560`, `1136567`, `1136571`, `1136575`, `1136579`, `1136590`, `1136597`,
+`1136607`, `1136634`, `1136647`, `1136651`, `1136659`, `1239973`, `1239977`,
+`1239981`, `1240060`, and `1241657`; extract-zip advisories `1139346` and
+`1193685`; and sprintf-js advisory `1241202`. Current vulnerable ranges and
+package paths remain recorded in P0.2 above. npm reports Electron
+`44.9.0` as fix, with a major-version change. No isolated transitive upgrade
+was confirmed.
+
+### Deterministic test quality review
+
+The nine tests assert observable contract outcomes: accepted and rejected
+lifecycle transitions, fail-closed policy decisions, approval binding and
+rejection reasons, capability and identity route decisions, progress
+quarantine/order handling, and evidence acceptance. They do not assert
+private implementation details. The tests substantiate pure-contract claims
+in CR-04, CR-05, and CR-09, but do not substantiate SQLite, Electron,
+recovery, packaging, or adapter compatibility claims.
+
+Important untested branches remain: `createApprovalRequest` validation,
+`evaluateDispatchEligibility`, dispatch-record authorization matching,
+terminal-outcome classification, workspace branch checks, audit-chain
+persistence, migration versioning/rollback, repository error wrapping, IPC
+runtime sender checks, CSP enforcement, cancellation, deadlines, and
+restart reconciliation. Persistence tests are **BLOCKED**, not replaced with
+mocks.
+
+### P0.3 remediation decision package
+
+| Priority | Action | Prerequisite and authorization | Security/compatibility risk | Validation and rollback |
+|---|---|---|---|---|
+| P0 | Restore approved native installation outputs | Explicit authorization to execute npm install scripts or approved clean-machine preparation | Third-party scripts and binary downloads execute; supply-chain and platform risk | Verify hashes/paths, then run SQLite/Electron gates; recreate clean dependency state if failed |
+| P0 | Run SQLite runtime qualification | Native better-sqlite3 readiness plus explicit runtime-test authorization | Persistence failure could expose partial state | Fresh/upgraded migration, rollback, and injected failure checks; remove only disposable test DBs |
+| P0 | Run Electron boundary qualification | Native Electron readiness plus explicit application-start authorization | Launches privileged desktop process | Startup flags, CSP, IPC sender/payload checks; stop process after checks |
+| P1 | Assess Electron security upgrade | Separate dependency-change authorization and Node compatibility decision | Major Electron behavior/API, packaging, and security regression risk | Branch/lockfile review, build, startup/security regression; revert manifest/lockfile if rejected |
+| P1 | Complete transitive license inventory | Tooling/metadata inspection authorization | License obligations may affect redistribution | Produce package/version/license/source report tied to lockfile; no code rollback needed |
+
+P0.3 status: deterministic pure tests and type check **PASS**; native
+runtime readiness **BLOCKED**; dependency audit **FAIL/BLOCKED**; SQLite and
+Electron runtime qualification **NOT RUN**; clean-machine reproducibility,
+coverage, recovery, packaging, adapter qualification, and independent review
+**UNVERIFIED/BLOCKED**.
+
 ## Prioritized remediation plan
 
 1. **P0 — Establish deterministic proof.** Authorize and add TypeScript
