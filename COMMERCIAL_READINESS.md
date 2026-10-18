@@ -837,6 +837,76 @@ packaging, clean-machine installation, adapter/provider conformance,
 independent review, and release authorization. This is self-review, not
 independent review.
 
+## P0.9-P1.2 implementation batch
+
+This batch started from committed P0.8 `1accfee8eb90c1210b2d388be27cb93c664d5904`.
+The worktree contained no unrelated changes. Runtime versions remained Electron
+`44.9.0`, better-sqlite3 `12.11.1`, Node `v24.19.0`, Windows x64, and Electron
+ABI `149`.
+
+### P1.0 durable lifecycle
+
+`src/persistence/run-repository.ts` now provides the smallest durable local
+slice: transactional run/attempt creation with `run.created` audit, and
+restart reconciliation of `running` plus `pending` work to
+`recovery_required`/`disconnected` with a durable recovery row and audit event.
+Repeated reconciliation is idempotent because reconciled records no longer
+match the selection predicate.
+
+| Evidence | Result | Status |
+|---|---|---|
+| Run/attempt creation and audit persistence | Real Electron SQLite test | **PASS** |
+| Restart reconciliation after close/reopen | Real disposable database test | **PASS** |
+| Duplicate reconciliation | Second reconciliation returns no work and no duplicate recovery audit | **PASS** |
+| Foreign-key failure rollback | Invalid task leaves no run or attempt rows | **PASS** |
+| Full canonical suite | 17/17 passed: 10 deterministic, 7 real SQLite | **PASS** |
+
+This slice does not claim worker launch, policy dispatch, cancellation, or
+external-process recovery.
+
+### P0.9 sender qualification
+
+Valid renderer IPC, malformed payload rejection, navigation prevention, popup
+denial, CSP, context isolation, sandbox, and disabled Node integration remain
+covered by prior Electron 44 evidence. A safe unauthorized second-WebContents
+sender-forgery fixture still is not available without adding a privileged
+production-only testing surface.
+
+| Criterion | Status |
+|---|---|
+| Payload and renderer boundary checks | **PASS** |
+| Unauthorized sender-forgery proof | **UNVERIFIED** |
+
+### P1.1 cancellation and process ownership
+
+No process-launch or cancellation implementation existed in the current
+project. No supported Windows Job Object binding is installed, and adding
+guessed PID or process-name termination would violate ownership requirements.
+No unsafe partial implementation was added.
+
+| Criterion | Status |
+|---|---|
+| Process ownership before termination | **BLOCKED** |
+| Graceful shutdown/escalation and exit verification | **BLOCKED** |
+| Runtime disposable-process cancellation evidence | **NOT TESTED** |
+
+### P1.2 packaging
+
+Project-local `@electron/packager@20.3.0` was added after compatibility
+inspection; it requires Node `>=22.12.0`, satisfied by Node `24.19.0`.
+`npm run package:win` produces an unsigned Windows x64 application directory
+under ignored `out/`. The packager is not an installer, signer, publisher, or
+clean-machine test.
+
+| Criterion | Status |
+|---|---|
+| Reproducible local package command | **PASS** |
+| Renderer, migrations, and native binding included | **PASS** package inspection |
+| Packaged startup and real SQLite query | **PASS** controlled package smoke |
+| Secret/local database exclusion | **PASS** targeted artifact inspection |
+| Signed installer/distribution | **NOT RUN** |
+| Clean-machine installation | **NOT TESTED** |
+
 ## Prioritized remediation plan
 
 1. **P0 — Establish deterministic proof.** Authorize and add TypeScript

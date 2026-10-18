@@ -14,8 +14,9 @@ Stage 1 foundation establishes:
 - Main-process task creation/listing and application status operations.
 
 Worker dispatch, Git mutation, live harness/provider integration,
-independent review execution, repair loops, cancellation exercises, restart
-reconciliation, packaging, and qualification remain unimplemented.
+independent review execution, repair loops, cancellation exercises, and
+qualification remain unimplemented. Minimal restart reconciliation and local
+Windows packaging are implemented but not release-qualified.
 
 Stage 2 adds source-level policy decisions, risk classification, one-shot
 exact-context approval contracts, and workspace/Git safety contracts. These
@@ -114,7 +115,7 @@ npm start
 ```
 
 `npm test` compiles both suites, then runs ten deterministic contract tests and
-five real SQLite tests under Electron 44. The Electron-targeted native SQLite
+seven real SQLite tests under Electron 44. The Electron-targeted native SQLite
 binding cannot load under ordinary Node.js; use `npm test` rather than invoking
 the compiled tests with `node --test`.
 
@@ -123,9 +124,11 @@ Runtime requirements: Windows x64, Node.js `24.x`, npm `12.x`, Electron
 compilation requires the official Visual Studio Build Tools C++ workload and a
 compatible Windows SDK.
 
-No application packaging configuration exists yet. `npm run build` produces
-compiled application assets, not an installer or distributable package.
-Clean-machine installation, packaging, recovery qualification, adapter
+`npm run package:win` builds the application and creates an unsigned Windows
+x64 Electron package under `out/` using project-local Electron Packager.
+The package includes the Electron-ABI-149 native SQLite binding. This is an
+unmanaged application directory, not an installer or signed release.
+Clean-machine installation, process cancellation qualification, adapter
 qualification, and independent review remain unverified or blocked.
 
 ## Commercial readiness
