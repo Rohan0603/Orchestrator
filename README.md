@@ -113,6 +113,14 @@ npm start
 ```
 
 Build, startup, security checks, migration exercises, and runtime qualification
-were not run under Stage 1, Stage 2, or Stage 3 authorization. Node/Electron/native
+were not run under Stages 1-4 authorization. Node/Electron/native
 SQLite compatibility remains unverified until separately authorized validation.
 Independent review remains blocked by the permanent single-agent rule.
+
+## Commercial readiness
+
+[COMMERCIAL_READINESS.md](COMMERCIAL_READINESS.md) is the current
+commercial-readiness validation matrix. It records evidence-backed status,
+blocked gates, remediation order, and release stop conditions. No gate is
+marked passed without corresponding evidence; the product is not currently
+recommended for publication.

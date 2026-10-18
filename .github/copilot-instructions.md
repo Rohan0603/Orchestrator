@@ -83,6 +83,24 @@
 - If unrelated changes exist, preserve them and commit only safely attributable
   stage files. If scope cannot be isolated, stop and report the blocker.
 
+## Commercial readiness and validation evidence
+
+- Maintain `COMMERCIAL_READINESS.md` as the evidence matrix derived from
+  `MVP_plan.md`.
+- Never mark a requirement passed without corresponding reproducible evidence.
+  Source review, a successful commit, or an implementation report is not
+  runtime validation.
+- Record requirement, risk, method, expected result, actual result, evidence,
+  status, commit/version, and defects/remediation for each gate.
+- Distinguish implemented-but-unvalidated, blocked, failed, and inconclusive
+  outcomes. Do not convert missing evidence into a pass.
+- Preserve truthful AI-assisted provenance, Copilot attribution, commit history,
+  review identity, test results, and release metrics. Never claim AI-free
+  authorship or independent review when not true.
+- Do not recommend marketplace publication while critical validation,
+  security, recovery, mandatory adapter, dependency, or independent-review
+  gates remain blocked, failed, or inconclusive.
+
 ## Separate authorization gates
 
 Treat each item below as separately gated. A general request to develop does not bypass these gates:

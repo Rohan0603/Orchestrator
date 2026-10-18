@@ -70,6 +70,19 @@ For every task, record objective, dependencies, permitted files, non-goals, acce
   security qualification, runtime correctness, or independent review. If stage
   scope cannot be isolated safely, stop before staging and report the blocker.
 
+## Commercial readiness and validation evidence
+
+- Maintain `COMMERCIAL_READINESS.md` from `MVP_plan.md` as source of truth for
+  validation status.
+- Never mark requirements passed without reproducible evidence linked to the
+  exact commit/version. Source review and commits do not prove runtime quality.
+- Record risk, method, expected/actual result, evidence, status, and defects for
+  each gate. Preserve `blocked`, `failed`, and `inconclusive` distinctions.
+- Preserve truthful AI-assisted provenance and genuine review identity. Never
+  claim human-only authorship or independent review without evidence.
+- Do not recommend publication while critical quality, security, recovery,
+  adapter, dependency, or independent-review gates remain unresolved.
+
 ## Non-negotiable boundaries
 
 - Keep Electron main/preload/renderer boundaries secure: context isolation, renderer sandboxing, restrictive CSP, no renderer Node integration, narrow typed preload, validated IPC.
