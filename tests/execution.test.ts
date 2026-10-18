@@ -239,3 +239,35 @@ test("local execution blocks before dispatch when mandatory capability is missin
     rmSync(scenario.directory, { recursive: true, force: true });
   }
 });
+
+test("injected uncertain boundaries require recovery and do not replay dispatch", async () => {
+  for (const failureInjection of ["after_intent", "after_launch", "before_terminal_persist"] as const) {
+    const scenario = runScenario("succeeded");
+    try {
+      const result = await executeLocalRun(scenario.database, {
+        task: scenario.currentTask,
+        action: action(),
+        approval: null,
+        workspace: workspace(),
+        manifest,
+        route,
+        routeRequirements: requirements(),
+        deadlineAt: "2099-01-01T00:00:00.000Z",
+        adapter: adapter(scenario.terminalKind),
+        failureInjection
+      });
+      assert.equal(result.status, "recovery_required");
+      assert.equal(
+        (scenario.database.prepare("SELECT count(*) AS count FROM dispatch_intents").get() as { count: number }).count,
+        1
+      );
+      assert.equal(
+        (scenario.database.prepare("SELECT outcome FROM attempts").get() as { outcome: string }).outcome,
+        "inconclusive"
+      );
+    } finally {
+      scenario.database.close();
+      rmSync(scenario.directory, { recursive: true, force: true });
+    }
+  }
+});

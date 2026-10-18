@@ -128,6 +128,10 @@ classification. It does not invoke OpenCode, a provider, a shell, or a real
 worker. Successful fixture work stops at `verification` until independent
 orchestrator acceptance evidence exists.
 
+Deterministic failure injection covers uncertainty after dispatch intent,
+after fixture launch acknowledgement, and before terminal persistence. Each
+case records `recovery_required` and does not replay its dispatch intent.
+
 `npm test` compiles all suites, then runs ten deterministic contract tests,
 two adapter conformance tests, three local execution tests, and seven real
 SQLite tests under Electron 44. The Electron-targeted native SQLite

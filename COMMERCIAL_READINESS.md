@@ -1047,6 +1047,7 @@ executor exists.
 | Persistence unavailable after close | **PASS** |
 | Duplicate/out-of-order event delivery | **PASS** |
 | Restart with running/pending attempt | **PASS** |
+| Injected uncertainty after intent, after launch acknowledgement, and before terminal persistence | **PASS**; all three remain `recovery_required` with one dispatch intent and no replay |
 | Worker launch/cancellation/terminal persistence fault injection | **BLOCKED** |
 | Acceptance/evidence persistence fault injection | **UNVERIFIED** |
 
@@ -1065,7 +1066,7 @@ Final committed regression evidence:
 
 | Command | Result | Status |
 |---|---|---|
-| `npm test` | 22/22 passed: 10 deterministic, 2 conformance, 3 execution, 7 SQLite; exit `0` | **PASS** |
+| `npm test` | 23/23 passed: 10 deterministic, 2 conformance, 4 execution, 7 SQLite; exit `0` | **PASS** |
 | `npm exec tsc -- --noEmit` | Exit `0` | **PASS** |
 | `npm run build` | Exit `0` | **PASS** |
 | `npm audit --json` | 0 vulnerabilities; exit `0` | **PASS** |

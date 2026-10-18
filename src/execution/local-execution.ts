@@ -25,6 +25,7 @@ export interface LocalExecutionInput {
   readonly routeRequirements: RouteRequirements;
   readonly deadlineAt: string;
   readonly adapter: HarnessAdapter;
+  readonly failureInjection?: "after_intent" | "after_launch" | "before_terminal_persist";
 }
 
 export interface LocalExecutionResult {
@@ -107,6 +108,16 @@ export async function executeLocalRun(
     createdAt: new Date().toISOString()
   };
   dispatch.persistIntent(createDispatchRecord(intent, input.task, intent.authorization));
+  if (input.failureInjection === "after_intent") {
+    runs.recordAttemptOutcome(
+      created.attempt.id,
+      "inconclusive",
+      "recovery_required",
+      "recovery_required",
+      "Injected failure after durable dispatch intent"
+    );
+    return result(created.run, created.attempt.id, policy, "recovery_required", 0, 0);
+  }
   runs.transition(created.run.id, "running", "none");
   const dispatched = await input.adapter.createRun({
     dispatchId: intent.dispatchId,
@@ -133,6 +144,16 @@ export async function executeLocalRun(
       0,
       0
     );
+  }
+  if (input.failureInjection === "after_launch") {
+    runs.recordAttemptOutcome(
+      created.attempt.id,
+      "inconclusive",
+      "recovery_required",
+      "recovery_required",
+      "Injected failure after fixture launch acknowledgement"
+    );
+    return result(created.run, created.attempt.id, policy, "recovery_required", 0, 0);
   }
 
   let cursor = dispatch.createCursor(correlation);
@@ -170,6 +191,16 @@ export async function executeLocalRun(
         ? "recovery_required"
         : "verification";
   const outcome = terminal.kind === "succeeded" ? "succeeded" : terminal.kind === "failed" ? "failed" : terminal.kind === "cancelled" ? "cancelled" : terminal.kind === "timed_out" ? "timed_out" : "inconclusive";
+  if (input.failureInjection === "before_terminal_persist") {
+    runs.recordAttemptOutcome(
+      created.attempt.id,
+      "inconclusive",
+      "recovery_required",
+      "recovery_required",
+      "Injected failure before terminal persistence"
+    );
+    return result(created.run, created.attempt.id, policy, "recovery_required", progressAccepted, progressRejected);
+  }
   runs.recordAttemptOutcome(
     created.attempt.id,
     outcome,
