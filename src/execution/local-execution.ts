@@ -137,9 +137,14 @@ export async function executeLocalRun(
     dispatchId: intent.dispatchId,
     idempotencyKey: intent.idempotencyKey,
     authorization: intent.authorization,
-    taskDescription: input.task.description,
+    taskDescription: [
+      input.task.description,
+      "Acceptance criteria:",
+      ...input.task.acceptanceCriteria.map((criterion) => `- ${criterion}`)
+    ].join("\n"),
     deadlineAt: input.deadlineAt,
-    route: input.route
+    route: input.route,
+    workingDirectory: input.workspace.worktreePath ?? input.workspace.repositoryPath
   });
   if (!dispatched.ok) {
     const recovery = dispatched.error.class === "ambiguous";
@@ -176,7 +181,7 @@ export async function executeLocalRun(
   let cursor = dispatch.createCursor(correlation);
   let progressAccepted = 0;
   let progressRejected = 0;
-  input.adapter.subscribeProgress(correlation, (event) => {
+  const unsubscribeProgress = input.adapter.subscribeProgress(correlation, (event) => {
     const validation = validateProgressEvent(event, cursor);
     if (validation.disposition === "accepted") {
       dispatch.recordProgress(event, validation);
@@ -187,9 +192,23 @@ export async function executeLocalRun(
     }
   });
   let terminal: TerminalOutcome | undefined;
-  input.adapter.subscribeTerminal(correlation, (outcome) => {
-    terminal = outcome;
+  let resolveTerminal: ((outcome: TerminalOutcome) => void) | undefined;
+  const terminalReady = new Promise<TerminalOutcome>((resolve) => {
+    resolveTerminal = resolve;
   });
+  const unsubscribeTerminal = input.adapter.subscribeTerminal(correlation, (outcome) => {
+    terminal = outcome;
+    resolveTerminal?.(outcome);
+  });
+  if (!terminal) {
+    const remainingMs = Math.max(0, Date.parse(input.deadlineAt) - Date.now());
+    terminal = await Promise.race([
+      terminalReady,
+      new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), remainingMs))
+    ]);
+  }
+  unsubscribeProgress();
+  unsubscribeTerminal();
   if (!terminal) {
     runs.recordAttemptOutcome(
       created.attempt.id,

@@ -169,6 +169,7 @@ export interface CreateRunRequest {
   readonly taskDescription: string;
   readonly deadlineAt: string;
   readonly route: RouteIdentity;
+  readonly workingDirectory?: string;
 }
 
 export interface Correlation {
