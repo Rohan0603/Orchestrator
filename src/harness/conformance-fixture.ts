@@ -24,6 +24,7 @@ export interface ConformanceFixturePlan {
 
 export class ConformanceFixtureAdapter implements HarnessAdapter {
   public readonly identity: HarnessIdentity;
+  public createRunCalls = 0;
   private readonly seenIdempotencyKeys = new Set<string>();
   private readonly plan: ConformanceFixturePlan;
 
@@ -37,6 +38,7 @@ export class ConformanceFixtureAdapter implements HarnessAdapter {
   }
 
   public async createRun(request: CreateRunRequest): Promise<AdapterResult<RunCreated>> {
+    this.createRunCalls += 1;
     if (this.seenIdempotencyKeys.has(request.idempotencyKey)) {
       return {
         ok: false,

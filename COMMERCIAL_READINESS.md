@@ -1121,3 +1121,28 @@ verified quality, security, coverage, reliability, or AI-free-authorship badge.
 Development was AI-assisted in this repository. Existing Copilot
 co-author attribution and commit history must remain intact. This document
 does not reclassify AI-assisted work as human-only work.
+
+## Autonomous qualification pass — 2026-10-18
+
+Added crash-oriented recovery tests through the production local execution and
+SQLite repository path. The tests inject failures after durable intent, after
+launch acknowledgement, and before terminal persistence; close and reopen the
+database; reconcile interrupted work; and verify that the attempt becomes
+`disconnected`, the run becomes `recovery_required`, exactly one dispatch intent
+remains, and no dispatch is replayed. The fixture records actual
+`createRun` calls; the first boundary records zero calls and the latter two
+record one call.
+
+| Evidence | Result | Status |
+|---|---|---|
+| Reopened SQLite recovery after three crash boundaries | 1 test passed, 3 scenarios | **PASS** |
+| Durable intent count and actual fixture dispatch count | 3 scenarios verified | **PASS** |
+| Windows process ownership, graceful/forced cancellation | No implementation or runtime evidence | **BLOCKED** |
+| Real second-WebContents sender-forgery exercise | Safe supported fixture still unavailable | **UNVERIFIED** |
+| OpenCode/provider-backed worker | No route invoked; no configuration changed | **BLOCKED / NOT TESTED** |
+| Packaged executable startup | Application Control block remains | **BLOCKED** |
+
+The recovery test proves local durable reconciliation only. It does not prove
+ownership of an external process, cancellation safety, provider behavior,
+acceptance, independent review, clean-machine installation, signing, or
+commercial readiness.

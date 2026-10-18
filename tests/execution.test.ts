@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import test from "node:test";
 import type Database from "better-sqlite3";
 import { openDatabase } from "../src/persistence/database";
+import { RunRepository } from "../src/persistence/run-repository";
 import { TaskRepository } from "../src/persistence/task-repository";
 import { executeLocalRun } from "../src/execution/local-execution";
 import { ConformanceFixtureAdapter } from "../src/harness/conformance-fixture";
@@ -267,6 +268,63 @@ test("injected uncertain boundaries require recovery and do not replay dispatch"
       );
     } finally {
       scenario.database.close();
+      rmSync(scenario.directory, { recursive: true, force: true });
+    }
+  }
+});
+
+test("crash boundaries survive restart and block replay", async () => {
+  for (const failureInjection of [
+    "crash_after_intent",
+    "crash_after_launch",
+    "crash_before_terminal_persist"
+  ] as const) {
+    const scenario = runScenario("succeeded");
+    const databasePath = join(scenario.directory, "execution.db");
+    const fixture = adapter(scenario.terminalKind);
+    try {
+      await assert.rejects(
+        executeLocalRun(scenario.database, {
+          task: scenario.currentTask,
+          action: action(),
+          approval: null,
+          workspace: workspace(),
+          manifest,
+          route,
+          routeRequirements: requirements(),
+          deadlineAt: "2099-01-01T00:00:00.000Z",
+          adapter: fixture,
+          failureInjection
+        }),
+        new RegExp(`Injected crash`)
+      );
+      const intentCount = (scenario.database.prepare(
+        "SELECT count(*) AS count FROM dispatch_intents"
+      ).get() as { count: number }).count;
+      assert.equal(intentCount, 1);
+      assert.equal(fixture.createRunCalls, failureInjection === "crash_after_intent" ? 0 : 1);
+      scenario.database.close();
+
+      const restarted = openDatabase(databasePath);
+      try {
+        const reconciled = new RunRepository(restarted).reconcileInterruptedRuns(
+          "2026-01-01T00:02:00.000Z"
+        );
+        assert.equal(reconciled.length, 1);
+        assert.equal(reconciled[0].state, "recovery_required");
+        assert.equal(
+          (restarted.prepare("SELECT outcome FROM attempts").get() as { outcome: string }).outcome,
+          "disconnected"
+        );
+        assert.equal(
+          (restarted.prepare("SELECT count(*) AS count FROM dispatch_intents").get() as { count: number }).count,
+          1
+        );
+      } finally {
+        restarted.close();
+      }
+    } finally {
+      if (scenario.database.open) scenario.database.close();
       rmSync(scenario.directory, { recursive: true, force: true });
     }
   }

@@ -25,7 +25,13 @@ export interface LocalExecutionInput {
   readonly routeRequirements: RouteRequirements;
   readonly deadlineAt: string;
   readonly adapter: HarnessAdapter;
-  readonly failureInjection?: "after_intent" | "after_launch" | "before_terminal_persist";
+  readonly failureInjection?:
+    | "after_intent"
+    | "after_launch"
+    | "before_terminal_persist"
+    | "crash_after_intent"
+    | "crash_after_launch"
+    | "crash_before_terminal_persist";
 }
 
 export interface LocalExecutionResult {
@@ -108,6 +114,10 @@ export async function executeLocalRun(
     createdAt: new Date().toISOString()
   };
   dispatch.persistIntent(createDispatchRecord(intent, input.task, intent.authorization));
+  if (input.failureInjection === "crash_after_intent") {
+    runs.transition(created.run.id, "running", "none");
+    throw new Error("Injected crash after durable dispatch intent");
+  }
   if (input.failureInjection === "after_intent") {
     runs.recordAttemptOutcome(
       created.attempt.id,
@@ -144,6 +154,9 @@ export async function executeLocalRun(
       0,
       0
     );
+  }
+  if (input.failureInjection === "crash_after_launch") {
+    throw new Error("Injected crash after launch acknowledgement");
   }
   if (input.failureInjection === "after_launch") {
     runs.recordAttemptOutcome(
@@ -200,6 +213,9 @@ export async function executeLocalRun(
       "Injected failure before terminal persistence"
     );
     return result(created.run, created.attempt.id, policy, "recovery_required", progressAccepted, progressRejected);
+  }
+  if (input.failureInjection === "crash_before_terminal_persist") {
+    throw new Error("Injected crash before terminal persistence");
   }
   runs.recordAttemptOutcome(
     created.attempt.id,
