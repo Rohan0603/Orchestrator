@@ -611,6 +611,68 @@ environment change or binary source. After native binding creation, rerun all
 build, and typecheck. Do not claim commercial readiness from the zero-audit
 result.
 
+## P0.6 native build toolchain and Electron 44 validation record
+
+P0.6 started from clean `master` at
+`d489bd510ed3e7345304984f1ddfef71674899a3`, two commits ahead of
+`origin/master` at `84bd2071d087d5b46585e10dbcedea30f23b9cf9`. Package
+baseline is Electron `44.9.0`, better-sqlite3 `12.11.1`, TypeScript `5.9.3`,
+Node `v24.19.0`, npm `12.0.2`, Windows x64.
+
+### Toolchain and prebuild assessment
+
+| Check | Result | Status |
+|---|---|---|
+| `vswhere.exe` | Not found | **BLOCKED** |
+| `cl.exe` | Not found | **BLOCKED** |
+| `msbuild.exe` | Not found | **BLOCKED** |
+| npm `msvs_version` / `python` overrides | Undefined | **UNVERIFIED**; node-gyp found Python 3.14.7 during attempted build |
+| Electron ABI | `149` for Electron 44.9.0 | **RECORDED** |
+| Node ABI | `137` for Node 24.19.0 | **RECORDED** |
+| better-sqlite3 repository | WiseLibs/better-sqlite3 | **RECORDED** |
+| Electron-44 Windows x64 prebuild | `prebuild-install` reported none; fallback entered node-gyp | **BLOCKED** |
+
+The trusted package source is `better-sqlite3` from the configured npm
+registry, repository `https://github.com/WiseLibs/better-sqlite3`. No binary
+from an unofficial mirror or unknown source was used. The rebuild downloaded
+official Electron headers from `https://artifacts.electronjs.org/headers`
+through the package build flow, then stopped before compilation because
+Visual Studio C++ was missing. No system toolchain installation was attempted.
+
+Official remediation requires Visual Studio Build Tools or Visual Studio with
+the **Desktop development with C++** workload, Windows SDK, and a supported
+MSVC toolset. Installation may require administrator approval and changes to
+system state. It is outside this stage's authorization. Alternative path is a
+trusted `better-sqlite3@12.11.1` prebuild explicitly matching Electron runtime
+44.9.0, ABI 149, Windows x64, with verifiable publisher/source, checksum, and
+package provenance. No such prebuild was available to the attempted
+`prebuild-install` lookup.
+
+### P0.6 validation status
+
+| Gate | Result | Status |
+|---|---|---|
+| Native build toolchain | Missing; no installation attempted | **BLOCKED** |
+| Electron-44 better-sqlite3 binding | Not produced | **BLOCKED** |
+| Electron-44 native load | Not possible | **NOT RUN** |
+| Real SQLite suite after upgrade | 9 pure tests passed; 5 SQLite tests failed because binding was missing | **FAIL/BLOCKED** |
+| Electron-44 startup/security | Executable absent after upgrade | **NOT RUN** |
+| TypeScript check | Exit 0 | **PASS** |
+| Production build | Exit 0 | **PASS** build only |
+| Fresh dependency audit | 0 vulnerabilities | **PASS** audit snapshot only |
+
+P0.6 stops at missing system toolchain. Required next authorization is one of:
+
+1. Administrator-approved installation/use of official Visual Studio Build
+   Tools with Desktop development with C++, Windows SDK, and MSVC; or
+2. Security-approved, provenance-verified Electron-44/ABI-149 Windows x64
+   better-sqlite3 prebuild.
+
+After that authorization, rebuild only better-sqlite3 for Electron 44.9.0,
+verify the binding loads inside Electron (not only Node), rerun all 14 SQLite
+and deterministic tests, rerun Electron startup/security probes, and retain
+process cleanup evidence. Do not switch Electron versions to avoid ABI work.
+
 ## Prioritized remediation plan
 
 1. **P0 — Establish deterministic proof.** Authorize and add TypeScript
