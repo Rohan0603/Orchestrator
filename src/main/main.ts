@@ -3,6 +3,7 @@ import path from "node:path";
 import { openDatabase, PersistenceError } from "../persistence/database";
 import type Database from "better-sqlite3";
 import { TaskRepository } from "../persistence/task-repository";
+import { RunRepository } from "../persistence/run-repository";
 import { ConformanceFixtureAdapter } from "../harness/conformance-fixture";
 import { executeLocalRun } from "../execution/local-execution";
 import {
@@ -19,6 +20,7 @@ import {
 
 let mainWindow: BrowserWindow | undefined;
 let taskRepository: TaskRepository | undefined;
+let runRepository: RunRepository | undefined;
 let database: Database.Database | undefined;
 
 function failure(code: string, message: string): IpcResult<never> {
@@ -55,6 +57,19 @@ function registerIpc(): void {
     } catch (error) {
       console.error("Task listing failed", error);
       return failure("PERSISTENCE_ERROR", "Task listing failed");
+    }
+  });
+  ipcMain.handle("tasks:runs", (event, taskId: unknown) => {
+    if (!isTrustedSender(event)) return failure("UNTRUSTED_SENDER", "IPC sender rejected");
+    if (!runRepository) return failure("PERSISTENCE_UNAVAILABLE", "Database is unavailable");
+    if (typeof taskId !== "string" || taskId.trim().length === 0) {
+      return failure("INVALID_INPUT", "Task identifier is invalid");
+    }
+    try {
+      return success(runRepository.listForTask(taskId));
+    } catch (error) {
+      console.error("Run history listing failed", error);
+      return failure("PERSISTENCE_ERROR", "Run history listing failed");
     }
   });
   ipcMain.handle("tasks:create", (event, payload: unknown) => {
@@ -243,6 +258,8 @@ app.whenReady().then(() => {
   try {
     database = openDatabase(path.join(app.getPath("userData"), "orchestrator.db"));
     taskRepository = new TaskRepository(database);
+    runRepository = new RunRepository(database);
+    runRepository.reconcileInterruptedRuns(new Date().toISOString());
     registerIpc();
     mainWindow = createWindow();
     app.on("activate", () => {

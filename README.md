@@ -127,7 +127,10 @@ tasks expose **Run local fixture**. This executes only the deterministic local
 fixture adapter through policy, route, durable dispatch, progress, and terminal
 classification. It does not invoke OpenCode, a provider, a shell, or a real
 worker. Successful fixture work stops at `verification` until independent
-orchestrator acceptance evidence exists.
+orchestrator acceptance evidence exists. Each task now displays persisted run
+and attempt history, including recovery-required and disconnected outcomes.
+Startup reconciles interrupted running attempts before opening the renderer;
+uncertain work remains blocked and is never replayed automatically.
 
 Deterministic failure injection covers uncertainty after dispatch intent,
 after fixture launch acknowledgement, and before terminal persistence. Each

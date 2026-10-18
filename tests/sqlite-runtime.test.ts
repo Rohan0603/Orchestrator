@@ -234,6 +234,10 @@ test("run creation persists intent and restart reconciliation fails closed", () 
     });
     const runs = new RunRepository(database);
     const created = runs.createRun(task.id, "local-opencode", "2026-01-01T00:00:00.000Z");
+    assert.deepEqual(runs.listForTask(task.id), [{
+      run: created.run,
+      attempt: created.attempt
+    }]);
     database
       .prepare("UPDATE runs SET state = 'running' WHERE id = ?")
       .run(created.run.id);

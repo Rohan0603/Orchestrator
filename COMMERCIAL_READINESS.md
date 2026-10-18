@@ -4,6 +4,25 @@ Commercial release is blocked until every applicable hard gate has evidence.
 This matrix records current evidence without converting source inspection or
 commits into runtime proof.
 
+## Latest implementation pass
+
+The current checkout adds durable lifecycle projection without widening worker
+authority:
+
+- `RunRepository.listForTask` exposes persisted run and attempt history.
+- Electron startup reconciles interrupted running attempts before IPC
+  registration and renderer load.
+- Typed `tasks:runs` IPC returns history only after the same sender, frame, and
+  origin checks as other privileged channels.
+- Renderer displays durable run state and attempt outcome; it does not infer
+  lifecycle state from local memory.
+- `npm test`: **PASS**, 25/25.
+- `npm exec tsc -- --noEmit`: **PASS**.
+
+Process ownership, real-worker dispatch, cancellation, independent review,
+clean-machine installation, signing, and Application Control launch remain
+blocked or unverified. This pass does not change those gates.
+
 ## Current baseline
 
 | Field | Value |

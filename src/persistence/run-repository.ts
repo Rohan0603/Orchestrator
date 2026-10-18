@@ -28,8 +28,51 @@ export interface CreatedRun {
   readonly attempt: Attempt;
 }
 
+export interface RunHistoryEntry {
+  readonly run: Run;
+  readonly attempt: Attempt;
+}
+
+interface RunHistoryRow extends RunRow {
+  attempt_id: string;
+  attempt_outcome: Attempt["outcome"];
+  worker_report: string | null;
+  attempt_created_at: string;
+}
+
+function attemptFromRow(row: RunHistoryRow): Attempt {
+  return {
+    id: row.attempt_id,
+    runId: row.id,
+    outcome: row.attempt_outcome,
+    workerReport: row.worker_report,
+    createdAt: row.attempt_created_at
+  };
+}
+
 export class RunRepository {
   public constructor(private readonly database: Database.Database) {}
+
+  public listForTask(taskId: string): readonly RunHistoryEntry[] {
+    try {
+      const rows = this.database
+        .prepare(
+          `SELECT runs.*, attempts.id AS attempt_id, attempts.outcome AS attempt_outcome,
+                  attempts.worker_report, attempts.created_at AS attempt_created_at
+           FROM runs
+           JOIN attempts ON attempts.run_id = runs.id
+           WHERE runs.task_id = ?
+           ORDER BY runs.created_at DESC, attempts.created_at DESC`
+        )
+        .all(taskId) as RunHistoryRow[];
+      return rows.map((row) => ({
+        run: runFromRow(row),
+        attempt: attemptFromRow(row)
+      }));
+    } catch (error) {
+      throw new PersistenceError("Run history listing failed", { cause: error });
+    }
+  }
 
   public createRun(taskId: string, routeId: string | null, createdAt = new Date().toISOString()): CreatedRun {
     const run: Run = {

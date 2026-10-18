@@ -1,4 +1,4 @@
-import type { Task } from "./domain";
+import type { Run, Attempt, Task } from "./domain";
 
 export interface CreateTaskInput {
   readonly title: string;
@@ -21,6 +21,11 @@ export interface FixtureRunSummary {
   readonly progressRejected: number;
 }
 
+export interface RunHistoryEntry {
+  readonly run: Run;
+  readonly attempt: Attempt;
+}
+
 export interface IpcSuccess<T> {
   readonly ok: true;
   readonly value: T;
@@ -39,6 +44,7 @@ export type IpcResult<T> = IpcSuccess<T> | IpcFailure;
 export interface OrchestratorApi {
   getStatus(): Promise<IpcResult<ApplicationStatus>>;
   listTasks(): Promise<IpcResult<readonly Task[]>>;
+  listRuns(taskId: string): Promise<IpcResult<readonly RunHistoryEntry[]>>;
   createTask(input: CreateTaskInput): Promise<IpcResult<Task>>;
   runFixture(taskId: string): Promise<IpcResult<FixtureRunSummary>>;
 }

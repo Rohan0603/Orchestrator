@@ -43,6 +43,17 @@ async function refresh(): Promise<void> {
       note.textContent = " Approval workflow not available in fixture UI.";
       item.append(note);
     }
+    const history = await window.orchestrator.listRuns(task.id);
+    if (history.ok && history.value.length > 0) {
+      const runs = document.createElement("ul");
+      for (const entry of history.value) {
+        const run = document.createElement("li");
+        run.textContent = `Run ${entry.run.id.slice(0, 8)}: ${entry.run.state}; attempt ${entry.attempt.outcome}`;
+        if (entry.attempt.workerReport) run.title = entry.attempt.workerReport;
+        runs.append(run);
+      }
+      item.append(runs);
+    }
     tasks.append(item);
   }
 }
