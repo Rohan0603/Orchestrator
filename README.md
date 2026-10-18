@@ -141,10 +141,10 @@ binding cannot load under ordinary Node.js; use `npm test` rather than invoking
 the compiled tests with `node --test`.
 
 The IPC integration test proves an authorized primary renderer can create a
-task while a second real `WebContents` receives `UNTRUSTED_SENDER` before
-mutation. Subframe and invalid-origin adversarial calls remain unverified
-because no safe fixture currently exposes the production preload API to those
-contexts.
+task while a second real `WebContents` and a `data:`-origin window receive
+`UNTRUSTED_SENDER` before mutation. Malformed payloads and unknown task IDs
+are rejected without mutation. Subframe adversarial calls remain unverified
+because sandboxed subframes do not receive the production preload API.
 
 Runtime requirements: Windows x64, Node.js `24.x`, npm `12.x`, Electron
 `44.9.0`, and `better-sqlite3` compiled for Electron ABI `149`. Native

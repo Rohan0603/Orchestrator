@@ -7,6 +7,7 @@ import { app, BrowserWindow } from "electron";
 
 const directory = mkdtempSync(join(tmpdir(), "orchestrator-ipc-"));
 const rendererPath = join(directory, "fixture.html");
+const preloadPath = join(process.cwd(), "dist-test", "src", "preload", "preload.js");
 writeFileSync(rendererPath, "<!doctype html><html><body>IPC fixture</body></html>");
 app.setPath("userData", join(directory, "user-data"));
 process.env.ORCHESTRATOR_RENDERER_PATH = rendererPath;
@@ -50,6 +51,25 @@ test("real second WebContents is rejected before task mutation", async () => {
     ) as { ok: boolean; value?: readonly unknown[] };
     assert.equal(before.ok, true);
     assert.equal(before.value?.length, 1);
+    const malformed = await primary.webContents.executeJavaScript(
+      `window.orchestrator.createTask({
+        title: "",
+        description: "invalid",
+        acceptanceCriteria: [],
+        riskTier: 1
+      })`
+    ) as { ok: boolean; error?: { code: string } };
+    assert.deepEqual(malformed, {
+      ok: false,
+      error: { code: "INVALID_INPUT", message: "Invalid task payload" }
+    });
+    const unknownTask = await primary.webContents.executeJavaScript(
+      "window.orchestrator.runFixture('missing-task')"
+    ) as { ok: boolean; error?: { code: string } };
+    assert.deepEqual(unknownTask, {
+      ok: false,
+      error: { code: "INVALID_INPUT", message: "Task was not found" }
+    });
 
     const second = new BrowserWindow({
       show: false,
@@ -57,7 +77,7 @@ test("real second WebContents is rejected before task mutation", async () => {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
-        preload: join(process.cwd(), "dist-test", "src", "preload", "preload.js")
+        preload: preloadPath
       }
     });
     try {
@@ -81,6 +101,38 @@ test("real second WebContents is rejected before task mutation", async () => {
       assert.equal(after.value?.length, 1);
     } finally {
       if (!second.isDestroyed()) second.destroy();
+    }
+
+    const invalidOrigin = new BrowserWindow({
+      show: false,
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+        preload: preloadPath
+      }
+    });
+    try {
+      await invalidOrigin.loadURL("data:text/html,<html><body>invalid origin</body></html>");
+      const rejected = await invalidOrigin.webContents.executeJavaScript(
+        `window.orchestrator.createTask({
+          title: "invalid origin",
+          description: "must not mutate",
+          acceptanceCriteria: ["fixture"],
+          riskTier: 1
+        })`
+      ) as { ok: boolean; error?: { code: string } };
+      assert.deepEqual(rejected, {
+        ok: false,
+        error: { code: "UNTRUSTED_SENDER", message: "IPC sender rejected" }
+      });
+      const after = await primary.webContents.executeJavaScript(
+        "window.orchestrator.listTasks()"
+      ) as { ok: boolean; value?: readonly unknown[] };
+      assert.equal(after.ok, true);
+      assert.equal(after.value?.length, 1);
+    } finally {
+      if (!invalidOrigin.isDestroyed()) invalidOrigin.destroy();
     }
   } finally {
     for (const window of BrowserWindow.getAllWindows()) {

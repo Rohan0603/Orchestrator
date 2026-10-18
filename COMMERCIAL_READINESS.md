@@ -1168,7 +1168,9 @@ fixture currently exposes the production preload API to those contexts.
 |---|---|---|
 | Authorized primary renderer IPC mutation | 1 real Electron integration test passed | **PASS** |
 | Second-WebContents sender rejection before mutation | 1 real Electron integration test passed | **PASS** |
-| Subframe and invalid-origin adversarial IPC | No safe preload fixture | **UNVERIFIED** |
+| `data:` invalid-origin rejection before mutation | 1 real Electron integration test passed | **PASS** |
+| Malformed payload and unknown task rejection | 1 real Electron integration test passed; no task/run mutation | **PASS** |
+| Subframe adversarial IPC | Sandboxed subframes do not receive production preload API | **UNVERIFIED** |
 | Windows Job Object ownership and descendant termination | No supported project-local API/binding | **BLOCKED** |
 | Graceful 30-second plus 5-second forced cancellation | Ownership prerequisite absent | **BLOCKED** |
 | OpenCode executable readiness | `1.19.0`; CLI available; no route invoked or config changed | **BLOCKED / NOT TESTED** |
@@ -1181,3 +1183,7 @@ package was built unsigned for Windows x64; packaged startup was not repeated
 because the previously observed Windows Application Control block remains an
 owner-controlled gate. No clean-machine installation, provider invocation,
 process termination, signing, publication, or distribution was performed.
+
+The reopened-SQLite recovery test now also verifies repeated reconciliation is
+idempotent (`0` records on the second pass), one recovery audit event, one
+dispatch intent, and no automatic replay for each of three crash boundaries.

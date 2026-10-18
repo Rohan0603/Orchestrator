@@ -320,6 +320,16 @@ test("crash boundaries survive restart and block replay", async () => {
           (restarted.prepare("SELECT count(*) AS count FROM dispatch_intents").get() as { count: number }).count,
           1
         );
+        assert.equal(
+          new RunRepository(restarted).reconcileInterruptedRuns("2026-01-01T00:03:00.000Z").length,
+          0
+        );
+        assert.equal(
+          (restarted.prepare(
+            "SELECT count(*) AS count FROM audit_events WHERE event_type = 'run.recovery_required'"
+          ).get() as { count: number }).count,
+          1
+        );
       } finally {
         restarted.close();
       }
