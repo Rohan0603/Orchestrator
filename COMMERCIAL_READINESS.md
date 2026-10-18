@@ -977,6 +977,102 @@ reconciliation.
 | Real provider/harness conformance | No live adapter or provider launched | **NOT TESTED** |
 | Capability, identity, policy, evidence, and idempotency qualification for a real adapter | Fixture-only evidence | **BLOCKED** |
 
+## P1.7-P2.1 runtime execution and release qualification update
+
+This batch started from `a7b232aef4c7ae4588bba8c4723f580b04f5fe4a`.
+Baseline was clean: Electron `44.9.0`, better-sqlite3 `12.11.1`, Node
+`v24.19.0`, Windows x64, Electron ABI `149`, and zero npm audit findings.
+
+### P1.7 Windows process lifecycle
+
+Source inspection found durable run/attempt state and recovery reconciliation,
+but no process-launch implementation. No safe Windows Job Object binding or
+equivalent ownership mechanism is available in the current dependency set.
+No PID/name-based termination or unsafe FFI was added.
+
+| Criterion | Status |
+|---|---|
+| Run-owned process launch and ownership proof | **BLOCKED** |
+| Graceful cancellation and escalation | **BLOCKED** |
+| Disposable child-process cancellation evidence | **NOT TESTED** |
+
+### P1.8 IPC sender and frame authorization
+
+The three privileged handlers still reject senders whose WebContents ID does
+not match the primary window. Existing Electron 44 runtime evidence covers
+valid IPC, malformed payloads, CSP, sandbox, context isolation, disabled Node
+integration, popup denial, and navigation prevention. A legitimate second
+WebContents fixture exercising rejection-before-mutation was not safely
+available without adding a privileged production test surface.
+
+| Criterion | Status |
+|---|---|
+| Existing sender check and valid renderer behavior | **PASS** source/runtime evidence |
+| Unauthorized sender/frame rejection before mutation | **UNVERIFIED** |
+
+### P1.9 local execution
+
+Added `executeLocalRun` as a local-only pipeline using the existing policy,
+workspace, route, dispatch, persistence, and adapter contracts. It persists
+run/attempt intent before fixture dispatch, rejects missing mandatory
+capabilities before dispatch, persists accepted progress only, classifies
+terminal outcomes, and records failure/recovery states. The deterministic
+fixture has no external process, network, credential, or arbitrary-command
+side effect.
+
+| Evidence | Result | Status |
+|---|---|---|
+| Fixture success through policy, intent, progress, terminal classification | 1 test passed; final state `verification` | **PASS** |
+| Fixture failure through same pipeline | 1 test passed; final state `rejected` | **PASS** |
+| Missing mandatory capability blocks dispatch | 1 test passed; zero dispatch intents | **PASS** |
+| Acceptance of successful work | Explicitly remains false without verified acceptance evidence | **BLOCKED** |
+| Real provider/worker execution | Not launched | **NOT TESTED** |
+
+### P2.0 failure injection and recovery
+
+The implemented coverage exercises transaction rollback, closed-database
+failure, duplicate/out-of-order progress handling, missing-capability
+blocking, and restart reconciliation to recovery-required. No process
+cancellation or live-worker crash points are claimed because no process
+executor exists.
+
+| Failure area | Status |
+|---|---|
+| Persistence transaction rollback | **PASS** |
+| Persistence unavailable after close | **PASS** |
+| Duplicate/out-of-order event delivery | **PASS** |
+| Restart with running/pending attempt | **PASS** |
+| Worker launch/cancellation/terminal persistence fault injection | **BLOCKED** |
+| Acceptance/evidence persistence fault injection | **UNVERIFIED** |
+
+### P2.1 release gate review
+
+The unsigned package was rebuilt with `npm run package:win`. Current launch
+with a unique disposable user-data directory was blocked by Windows
+Application Control policy before process creation. Prior P1.5 controlled
+smoke evidence under the same Electron/package pipeline started the package
+and initialized real SQLite state. Current artifact inspection found the
+Electron ABI `149` x64 native binding and no `.env`, credentials, databases,
+WAL files, test fixtures, or caches. No clean machine or VM was available,
+and no signing, upload, publication, or distribution occurred.
+
+Final committed regression evidence:
+
+| Command | Result | Status |
+|---|---|---|
+| `npm test` | 22/22 passed: 10 deterministic, 2 conformance, 3 execution, 7 SQLite; exit `0` | **PASS** |
+| `npm exec tsc -- --noEmit` | Exit `0` | **PASS** |
+| `npm run build` | Exit `0` | **PASS** |
+| `npm audit --json` | 0 vulnerabilities; exit `0` | **PASS** |
+| `git diff --check` | Exit `0` | **PASS** |
+| Current packaged launch after rebuild | Windows Application Control blocked executable launch | **BLOCKED** |
+| Clean-machine installation | No isolated environment available | **NOT TESTED** |
+| Signing and release authorization | Not authorized or performed | **NOT RUN** |
+
+Commercial readiness remains **BLOCKED** by process ownership/cancellation,
+sender-forgery qualification, acceptance verification, live adapter/provider
+qualification, clean-machine installation, signing, and independent review.
+
 ## Prioritized remediation plan
 
 1. **P0 — Establish deterministic proof.** Authorize and add TypeScript

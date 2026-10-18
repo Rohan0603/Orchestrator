@@ -75,10 +75,15 @@ OpenCode remains the initial candidate. ACP, OpenCode server/API,
 and CLI alternatives remain comparison candidates only. No provider or
 harness integration has been selected or qualified.
 
-Eventually, adapter facts must persist with run/attempt identity, route
+Eventually, real adapter facts must persist with run/attempt identity, route
 identity, progress and terminal events, cancellation/reconciliation state,
-and artifact/evidence provenance. This stage adds no execution records or
-migration because no adapter is connected.
+and artifact/evidence provenance. No real adapter is connected.
+
+`src/execution/local-execution.ts` now connects policy, route eligibility,
+durable run/attempt state, dispatch intent, fixture-adapter progress, terminal
+classification, and fail-closed outcomes for local deterministic tests. A
+fixture success reaches `verification`; it is not marked accepted without
+orchestrator-verified acceptance evidence.
 
 ## Stage 4 dispatch and evidence boundary
 
@@ -115,8 +120,9 @@ npm test
 npm start
 ```
 
-`npm test` compiles both suites, then runs ten deterministic contract tests and
-seven real SQLite tests under Electron 44. The Electron-targeted native SQLite
+`npm test` compiles all suites, then runs ten deterministic contract tests,
+two adapter conformance tests, three local execution tests, and seven real
+SQLite tests under Electron 44. The Electron-targeted native SQLite
 binding cannot load under ordinary Node.js; use `npm test` rather than invoking
 the compiled tests with `node --test`.
 
