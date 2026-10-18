@@ -9,6 +9,11 @@ SQLite, restart-reconciliation, and Electron sender-boundary tests pass in the
 current checkout. The local fixture reaches verification and persists a
 blocked acceptance decision when independent review is unavailable.
 
+The Electron test runner cleanup path now terminates only its directly spawned
+child handle; recursive parent-PID discovery and forced descendant termination
+were removed. This improves test-process safety but does not qualify run-owned
+worker cancellation.
+
 ## Blocked or unvalidated
 
 - OpenCode CLI JSON is provisionally qualified; SDK/server and ACP remain

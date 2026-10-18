@@ -144,10 +144,12 @@ case records `recovery_required` and does not replay its dispatch intent.
 
 `npm test` compiles all suites, then runs eleven deterministic contract tests,
 four adapter conformance tests, five local execution/restart tests, eight real
-SQLite tests, and one real Electron second-WebContents IPC test: 29 tests total. The
+SQLite tests, one real Electron second-WebContents IPC test, and one UI/core Electron test: 30 tests total. The
 Electron-targeted native SQLite
 binding cannot load under ordinary Node.js; use `npm test` rather than invoking
 the compiled tests with `node --test`.
+Electron test cleanup terminates only the runner-owned child handle; it does
+not infer descendant ownership from parent PIDs.
 
 The IPC integration test proves an authorized primary renderer can create a
 task while a second real `WebContents` and a `data:`-origin window receive

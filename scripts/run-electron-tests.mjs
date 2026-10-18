@@ -1,4 +1,4 @@
-import { execFileSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import path from "node:path";
 
 const [expectedArgument, testFile] = process.argv.slice(2);
@@ -21,22 +21,8 @@ let pending = "";
 let timeout;
 
 function cleanup() {
-  try {
-    execFileSync(
-      "powershell.exe",
-      [
-        "-NoProfile",
-        "-NonInteractive",
-        "-Command",
-        `$root=${child.pid}; $ids=New-Object System.Collections.Generic.List[int]; $queue=New-Object System.Collections.Generic.Queue[int]; $queue.Enqueue($root); while($queue.Count -gt 0){$id=$queue.Dequeue(); $ids.Add($id); $children=Get-CimInstance Win32_Process -Filter "ParentProcessId=$id" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty ProcessId; foreach($childId in @($children)){$queue.Enqueue([int]$childId)}}; foreach($id in ($ids | Sort-Object -Descending)){if(Get-Process -Id $id -ErrorAction SilentlyContinue){Stop-Process -Id $id -Force -ErrorAction SilentlyContinue}}; exit 0`
-      ],
-      { stdio: "ignore" }
-    );
-    return true;
-  } catch {
-    process.stderr.write("Electron test cleanup failed\n");
-    return false;
-  }
+  if (child.exitCode !== null || child.signalCode !== null) return true;
+  return child.kill();
 }
 
 function finish(code) {

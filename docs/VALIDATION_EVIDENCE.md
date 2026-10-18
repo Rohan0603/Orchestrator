@@ -15,7 +15,7 @@ Environment for current validation:
 | Command | Exit | Result | Notes |
 |---|---:|---|---|
 | `npm exec tsc -- --noEmit` | 0 | PASS | No diagnostics |
-| `npm test` | 0 | PASS | 29 tests: 11 deterministic, 4 conformance, 5 execution, 8 SQLite, 1 Electron IPC |
+| `npm test` | 0 | PASS | 30 tests: 11 deterministic, 4 conformance, 5 execution, 8 SQLite, 1 Electron IPC, 1 UI/core |
 | `npm run build` | 0 | PASS | TypeScript build and renderer assets |
 | `npm audit --json` | 0 | PASS | 0 critical, high, moderate, or low vulnerabilities in current install |
 | `git diff --check` | 0 | PASS | No whitespace errors |
@@ -26,6 +26,11 @@ Environment for current validation:
 Electron tests emitted non-fatal GPU/network process diagnostics. They did not
 fail the suite. The package command proves packaging, not clean-machine launch,
 signing, Application Control compatibility, or production worker behavior.
+
+The Electron test runner was hardened after inspection: it now terminates only
+the exact `ChildProcess` handle it spawned. It no longer discovers descendants
+by parent PID or force-kills them. Descendant cleanup remains unimplemented and
+is not represented as verified process ownership.
 
 Executed facts:
 
@@ -58,7 +63,7 @@ At commit `75f6909` on Windows with Node `v24.19.0`, npm `12.0.2`, Electron
 
 | Command | Exit | Result |
 |---|---:|---|
-| `npm test` | 0 | PASS, 29/29 tests |
+| `npm test` | 0 | PASS, 30/30 tests |
 | `npm exec tsc -- --noEmit` | 0 | PASS |
 | `npm run build` | 0 | PASS |
 | `npm audit --json` | 0 | PASS, 0 critical/high/moderate/low |
@@ -72,3 +77,9 @@ evidence.
 The new SQLite backup test proves schema and task-state restoration from a
 disposable backup. It does not prove retention, backup scheduling, active-run
 recovery, or disaster recovery.
+
+Current qualification rerun on this checkout also passed `npm audit --json`
+with zero reported vulnerabilities and `npm run package:win` with exit code
+0. These results prove dependency/package generation only; they do not prove
+clean-machine launch, signing, Application Control compatibility, or release
+readiness.

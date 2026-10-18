@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "evidence-index-v1",
+  "evidenceDate": "2026-10-18",
+  "sourceRevision": "37b5f4d",
+  "trials": [
+    {
+      "trialId": "r5",
+      "record": "../../results/real-opencode-durable/real-opencode-durable-r5.json",
+      "recordSha256": "C1F0F2D014A65F619991ED8D874D2AAB0D44D78C65FFFFA6E67CA4A267AB9FF4",
+      "diff": "../../results/real-opencode-durable/real-opencode-durable-r5.diff",
+      "diffSha256": "14F2F182A686BB3D3898755B8E6B8A4D6B2F53C527724DCE1FA41B37F6A1868C",
+      "status": "blocked"
+    },
+    {
+      "trialId": "r6",
+      "record": "../../results/real-opencode-durable/real-opencode-durable-r6.json",
+      "recordSha256": "1C4EEF0F55D97D12724834C7D938D44E1587E2759EF531AE21926C920B400265",
+      "diff": "../../results/real-opencode-durable/real-opencode-durable-r6.diff",
+      "diffSha256": "14F2F182A686BB3D3898755B8E6B8A4D6B2F53C527724DCE1FA41B37F6A1868C",
+      "status": "blocked"
+    },
+    {
+      "trialId": "r7",
+      "record": "../../results/real-opencode-durable/real-opencode-durable-r7.json",
+      "recordSha256": "1BE4C5DA5A24201C0E251115212E30DED82532379E2C88EC63832EDDF54EA9D0",
+      "diff": "../../results/real-opencode-durable/real-opencode-durable-r7.diff",
+      "diffSha256": "14F2F182A686BB3D3898755B8E6B8A4D6B2F53C527724DCE1FA41B37F6A1868C",
+      "status": "blocked",
+      "usage": {
+        "total": 18100,
+        "input": 100,
+        "output": 46,
+        "reasoning": 34,
+        "cost": 0
+      }
+    }
+  ],
+  "notes": [
+    "Missing telemetry is unknown, not zero.",
+    "Acceptance is blocked because independent review is unavailable.",
+    "Cancellation is blocked because Windows process ownership is unverified."
+  ]
+}
