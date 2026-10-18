@@ -17,6 +17,16 @@ reported non-fatal GPU/network process diagnostics during tests. No live
 provider, independent reviewer, process-ownership, clean-machine, packaging,
 or backup/restore qualification was established by this run.
 
+## Final completion audit
+
+The audit at commit `0fb0070` also passed `npm exec tsc -- --noEmit`,
+`npm audit --json` (0 vulnerabilities), `git diff --check`, and
+`npm run package:win`. Experiment raw-record and summary runners passed
+disposable-directory smoke tests. These results do not clear mandatory live
+worker, process-ownership, independent-review, recovery, clean-machine, or
+backup/restore gates. Overall research-MVP verdict remains
+**INCOMPLETE / BLOCKED**; commercial release remains **do not publish**.
+
 ## Latest implementation pass
 
 The current checkout adds durable lifecycle projection without widening worker
@@ -44,10 +54,10 @@ blocked or unverified. This pass does not change those gates.
 | Field | Value |
 |---|---|
 | Product version | `0.1.0` |
-| Validation baseline commit | `7edc5d251d2022e202f748e83d7818057c7a10b7` |
+| Validation baseline commit | `0fb0070` |
 | Branch | `master` |
-| Remote publication | `origin/master` points to validation baseline |
-| Validation execution authorization | Granted for P0 local checks |
+| Remote publication | No push performed; local branch is ahead of origin |
+| Validation execution authorization | Granted for audit commands and local qualification |
 | Independent review | Blocked by permanent single-agent rule |
 | Current release recommendation | Do not publish |
 
@@ -56,6 +66,10 @@ reproducible defect; `blocked` means a prerequisite or authorization is
 missing; `inconclusive` means evidence conflicts or cannot establish the
 requirement; `implemented-not-validated` means source exists but runtime proof
 does not.
+
+The detailed rows below retain historical gate records from earlier stages.
+For current audit results, use [MVP acceptance matrix](docs/MVP_ACCEPTANCE_MATRIX.md)
+and [validation evidence](docs/VALIDATION_EVIDENCE.md).
 
 ## Validation matrix
 
