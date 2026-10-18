@@ -524,6 +524,93 @@ After native setup, authorize SQLite runtime tests and Electron startup/security
 checks as separate gates. Do not run `npm install-scripts approve` without
 that policy-owner authorization.
 
+### P0.5 continuation after explicit script approval
+
+The user then explicitly approved only the following package scripts:
+`electron@38.8.6` (`postinstall: node install.js`) and
+`better-sqlite3@12.11.1` (`install: node-gyp rebuild`). npm 12.0.2 documented
+scoped syntax:
+
+```text
+npm install-scripts approve <pkg> [<pkg> ...]
+```
+
+The exact pinned command ran:
+
+```text
+npm install-scripts approve electron@38.8.6 better-sqlite3@12.11.1 --allow-scripts-pin
+```
+
+This wrote package-scoped `allowScripts` entries. No `--all` approval ran.
+The approved rebuilds executed and produced Electron 38.8.6's executable and
+a Node 24 better-sqlite3 binding. Direct Node load passed. Electron launch then
+failed closed because Electron 38 required ABI `139` while the binding was
+compiled for Node ABI `137`:
+
+```text
+This version of Node.js requires NODE_MODULE_VERSION 139.
+```
+
+An Electron-targeted rebuild was attempted. npm 12 rejected direct
+`--runtime/--target/--dist-url` flags, so equivalent environment variables
+were used for the package script. Electron 38 startup remained ABI-incompatible
+until dependency remediation was assessed.
+
+### Electron 44 dependency remediation result
+
+Live metadata confirmed Electron `44.9.0` as the audit fix, with Node
+`>=22.12.0`; current Node `v24.19.0` satisfies that engine. Source review
+found only stable Electron APIs (`app`, `BrowserWindow`, `dialog`, `ipcMain`,
+`contextBridge`) and no known Electron-38-specific API usage. better-sqlite3
+12.11.1 supports Node 24, but still requires an Electron-ABI native rebuild.
+
+After rollback backup capture, scoped remediation changed Electron from
+`^38.2.2` to `^44.9.0` and updated `package-lock.json` through:
+
+```text
+npm install electron@44.9.0 --save-dev --foreground-scripts
+```
+
+The audit then reported **0 vulnerabilities**: 0 critical, 0 high, 0
+moderate, 0 low, 0 info. This is dependency-audit evidence only, not runtime
+qualification.
+
+The required Electron-44 SQLite rebuild was attempted with:
+
+```text
+npm rebuild better-sqlite3 --foreground-scripts
+```
+
+using Electron-target environment values. No Electron-44 prebuilt binding
+was available. `node-gyp` downloaded Electron headers, then failed because
+Visual Studio with Desktop development with C++ was unavailable. The exact
+failure was `Could not find any Visual Studio installation to use`.
+No compiler or system toolchain was installed.
+
+Current post-upgrade artifacts: Electron executable absent and no
+better-sqlite3 `.node` binding. The dependency upgrade is applied but
+runtime-unverified and cannot close CR-08 or CR-03. Rollback remains available
+from the pre-upgrade manifest/lockfile backup; do not roll back silently.
+
+### Executed post-upgrade evidence
+
+| Check | Result | Status |
+|---|---|---|
+| `npm test` before Electron upgrade | 14/14 pure and real SQLite tests passed | **PASS** for Electron-38/Node-24 SQLite only; not Electron ABI proof |
+| `npm test` after Electron upgrade | 9 pure tests passed; 5 SQLite tests failed with missing native binding | **FAIL/BLOCKED** |
+| `npm run build` | Exit 0 | **PASS** build only |
+| `npm exec tsc -- --noEmit` | Exit 0 | **PASS** typecheck only |
+| `npm audit --json` after upgrade | 0 vulnerabilities | **PASS** audit snapshot; runtime unverified |
+| Electron 44 startup/security | Not launched; executable absent | **NOT RUN** |
+| Electron-44 ABI SQLite load | No binding produced | **BLOCKED** |
+
+Required next action: approved Windows C++ build toolchain or an approved
+Electron-44-compatible better-sqlite3 prebuild, with authorization for that
+environment change or binary source. After native binding creation, rerun all
+14 tests, verify Electron load, rerun Electron startup/security probes, audit,
+build, and typecheck. Do not claim commercial readiness from the zero-audit
+result.
+
 ## Prioritized remediation plan
 
 1. **P0 — Establish deterministic proof.** Authorize and add TypeScript

@@ -6,7 +6,7 @@
   "main": "dist/main/main.js",
   "scripts": {
     "build": "tsc --build && node scripts/copy-renderer-assets.mjs",
-    "test": "tsc -p tsconfig.test.json && node --test dist-test/tests/deterministic.test.js",
+    "test": "tsc -p tsconfig.test.json && node --test dist-test/tests/deterministic.test.js dist-test/tests/sqlite-runtime.test.js",
     "start": "electron ."
   },
   "dependencies": {
@@ -15,7 +15,11 @@
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.8.0",
-    "electron": "^38.2.2",
+    "electron": "^44.9.0",
     "typescript": "^5.9.3"
+  },
+  "allowScripts": {
+    "electron@44.9.0": true,
+    "better-sqlite3@12.11.1": true
   }
 }
