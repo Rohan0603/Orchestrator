@@ -74,13 +74,7 @@ export class ConformanceFixtureAdapter implements HarnessAdapter {
     handler: (event: ProgressEvent) => void
   ): () => void {
     for (const event of this.plan.progressEvents ?? []) {
-      if (
-        event.correlation.dispatchId === correlation.dispatchId &&
-        event.correlation.runId === correlation.runId &&
-        event.correlation.attemptId === correlation.attemptId
-      ) {
-        handler(event);
-      }
+      handler({ ...event, correlation });
     }
     return () => undefined;
   }
@@ -90,14 +84,7 @@ export class ConformanceFixtureAdapter implements HarnessAdapter {
     handler: (outcome: TerminalOutcome) => void
   ): () => void {
     const outcome = this.plan.terminalOutcome;
-    if (
-      outcome &&
-      outcome.correlation.dispatchId === correlation.dispatchId &&
-      outcome.correlation.runId === correlation.runId &&
-      outcome.correlation.attemptId === correlation.attemptId
-    ) {
-      handler(outcome);
-    }
+    if (outcome) handler({ ...outcome, correlation });
     return () => undefined;
   }
 

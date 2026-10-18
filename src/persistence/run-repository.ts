@@ -111,6 +111,7 @@ export class RunRepository {
             observedAt
           });
         }
+
         return rows.map((row) => ({
           ...runFromRow(row),
           state: "recovery_required" as const,
@@ -119,6 +120,53 @@ export class RunRepository {
       })();
     } catch (error) {
       throw new PersistenceError("Run reconciliation failed", { cause: error });
+    }
+  }
+
+  public transition(runId: string, state: Run["state"], recoveryState: Run["recoveryState"]): void {
+    try {
+      const result = this.database
+        .prepare("UPDATE runs SET state = ?, recovery_state = ? WHERE id = ?")
+        .run(state, recoveryState, runId);
+      if (result.changes !== 1) throw new Error("Run not found");
+      this.appendAudit("run.state_changed", { runId, state, recoveryState });
+    } catch (error) {
+      throw new PersistenceError("Run state transition failed", { cause: error });
+    }
+  }
+
+  public recordAttemptOutcome(
+    attemptId: string,
+    outcome: Attempt["outcome"],
+    runState: Run["state"],
+    recoveryState: Run["recoveryState"],
+    workerReport: string | null
+  ): void {
+    try {
+      this.database.transaction(() => {
+        const attempt = this.database
+          .prepare("SELECT run_id FROM attempts WHERE id = ?")
+          .get(attemptId) as { run_id: string } | undefined;
+        if (!attempt) throw new Error("Attempt not found");
+        const attemptResult = this.database
+          .prepare("UPDATE attempts SET outcome = ?, worker_report = ? WHERE id = ? AND outcome = 'pending'")
+          .run(outcome, workerReport, attemptId);
+        if (attemptResult.changes !== 1) throw new Error("Attempt is no longer pending");
+        const runResult = this.database
+          .prepare("UPDATE runs SET state = ?, recovery_state = ? WHERE id = ?")
+          .run(runState, recoveryState, attempt.run_id);
+        if (runResult.changes !== 1) throw new Error("Run not found");
+        this.appendAudit("attempt.outcome_recorded", {
+          attemptId,
+          runId: attempt.run_id,
+          outcome,
+          runState,
+          recoveryState,
+          workerReport
+        });
+      })();
+    } catch (error) {
+      throw new PersistenceError("Attempt outcome persistence failed", { cause: error });
     }
   }
 
