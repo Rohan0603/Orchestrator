@@ -227,6 +227,210 @@ Electron runtime qualification **NOT RUN**; clean-machine reproducibility,
 coverage, recovery, packaging, adapter qualification, and independent review
 **UNVERIFIED/BLOCKED**.
 
+## P0.4 controlled native runtime setup plan
+
+This section is a plan only. It records no completed native setup or runtime
+validation. During P0.4 planning, no install, rebuild, upgrade, application
+launch, binary download, environment-policy change, or lockfile change ran.
+
+### Gates and authorization
+
+| Gate | Scope | Required authorization | Pass evidence |
+|---|---|---|---|
+| Native setup | Execute existing Electron and better-sqlite3 install/build scripts without changing versions | Explicit approval for third-party script execution and possible binary downloads | Expected native artifacts exist and load |
+| SQLite validation | Open disposable real SQLite DB; run migrations, transactions, repositories, and failure cases | Explicit approval for native runtime tests and disposable DB creation/deletion | Test report with fresh/upgrade/rollback/error evidence |
+| Electron validation | Start Electron app and inspect startup/security boundaries | Explicit approval to launch application and controlled process cleanup | Startup log plus security probe results |
+| Dependency remediation | Change Electron or transitive dependency versions | Separate explicit dependency-change approval | Reviewed manifest/lockfile, audit rerun, build and regression evidence |
+| Packaging | Produce installer/package artifacts | Separate packaging and generated-artifact approval | Reproducible package, install/startup evidence, clean-machine result |
+| Commercial readiness | Interpret all hard gates and independent review | Product-release authorization; independent review still required | Evidence-linked report; no blocked critical gates |
+
+P0.4 native setup must not silently enable scripts globally, modify npm
+configuration, upgrade dependencies, or claim that native setup is complete
+because npm reports `ignore-scripts=false`.
+
+### Pre-change evidence capture
+
+Run from `C:\Users\ponna\Project\Orchestrator` before any authorized setup:
+
+```powershell
+git status --short
+git status --branch --short
+git rev-parse HEAD
+git rev-parse origin/master
+git diff --check
+git config --local user.name
+git config --local user.email
+node --version
+npm --version
+npm config get ignore-scripts
+npm ls electron better-sqlite3 typescript --depth=0
+Get-FileHash package.json,package-lock.json -Algorithm SHA256
+Test-Path node_modules\electron\dist\electron.exe
+Get-ChildItem node_modules\better-sqlite3 -Recurse -Filter *.node
+cmd.exe /d /c "npm audit --json > audit-before.json"
+```
+
+`npm audit` may exit nonzero when findings exist; preserve its JSON output as
+evidence, not as a remediation failure. Store evidence outside Git or in an
+explicitly approved evidence directory. Do not commit native binaries,
+databases, audit dumps, or generated output.
+
+### Backup and rollback
+
+Before setup, copy `package.json`, `package-lock.json`, and the pre-change
+evidence manifest to a timestamped directory outside the repository. Record
+the current commit and SHA-256 hashes. Do not copy `node_modules` as a source
+of truth.
+
+If setup changes tracked files, stop. Review the diff before any next action.
+Rollback by restoring only the reviewed manifest/lockfile copies, removing the
+disposable `node_modules` tree in an approved environment, and recreating
+dependencies through an separately authorized clean-install procedure. Do not
+use `git reset`, history rewriting, or force-push. If setup fails without
+tracked-file changes, preserve logs and native artifact state; do not retry
+with broader permissions or alternate versions without new approval.
+
+### Minimum native setup
+
+Keep current manifest and lockfile unchanged. After explicit approval for
+script execution and possible downloads, run each package separately so
+failure ownership stays clear:
+
+```powershell
+npm rebuild electron --foreground-scripts
+npm rebuild better-sqlite3 --foreground-scripts
+```
+
+Both commands can execute third-party scripts. Electron may download its
+platform runtime. better-sqlite3 may download a prebuild or invoke `node-gyp`
+and local compiler tooling. No `npm install`, `npm ci`, `npm audit fix`,
+version change, or global npm policy change is part of minimum setup.
+
+Immediately after each command, capture:
+
+```powershell
+Test-Path node_modules\electron\dist\electron.exe
+Get-ChildItem node_modules\better-sqlite3 -Recurse -Filter *.node
+Get-FileHash package.json,package-lock.json -Algorithm SHA256
+git status --short
+```
+
+Stop if a script requests unexpected network access, changes tracked files,
+reports an unsupported Node/ABI/compiler condition, or produces an artifact
+outside expected package paths. Preserve command output and error text.
+
+### SQLite validation after native setup
+
+Add real native tests in `tests/sqlite-runtime.test.ts`; do not mock
+`better-sqlite3` or replace repository calls with fakes. Use disposable
+temporary database paths and remove only those test files after each test.
+Keep test data deterministic.
+
+Required cases:
+
+1. Fresh `openDatabase` creates schema version 3, enables foreign keys, and
+   exposes all migration tables.
+2. A database seeded at schema version 1 advances through migrations 2 and 3
+   without losing task, run, attempt, approval, or audit rows.
+3. A migration failure inside a transaction leaves schema version and partial
+   tables unchanged.
+4. A transaction that inserts then throws leaves no partial row.
+5. `TaskRepository` create/list round-trips durable task fields.
+6. `PolicyRepository` records decision and audit event atomically; approval
+   consumption is exact-context, single-use, and audited.
+7. `DispatchRepository` enforces durable unique dispatch/idempotency keys,
+   cursor/event persistence, and evidence writes.
+8. Closed/read-only/corrupt database conditions return explicit
+   `PersistenceError` without success-shaped fallback.
+
+Proposed command after test implementation and native setup:
+
+```powershell
+npm test
+npm exec tsc -- --noEmit
+```
+
+Record test count, failures, database paths, schema versions, and retained
+error evidence. A passing pure suite cannot close CR-02, CR-04, or CR-05.
+
+### Electron validation after native setup
+
+Do not use `--no-sandbox`, disable context isolation, enable Node integration,
+weaken CSP, or add debug exceptions. Start only after native setup evidence:
+
+```powershell
+npm start
+```
+
+Controlled validation must verify:
+
+1. Electron starts from `dist/main/main.js` and reports no missing executable
+   or preload/asset error.
+2. `BrowserWindow` uses `contextIsolation: true`, `sandbox: true`, and
+   `nodeIntegration: false`; preload path resolves inside expected build
+   output.
+3. Renderer cannot access Node/process/fs APIs and receives only typed preload
+   methods.
+4. Renderer CSP rejects unexpected script/resource origins.
+5. IPC rejects messages from a non-active or foreign sender and rejects
+   malformed payloads.
+6. Renderer cannot open unapproved windows or navigate outside allowed local
+   content.
+7. Main-process database initialization fails explicitly when persistence
+   setup is unavailable.
+
+Capture startup logs and probe results. Close only the controlled test
+processes after checks. These checks establish Electron runtime evidence but
+do not constitute independent security review.
+
+### Separate remediation and release sequence
+
+1. Native setup gate: execute approved rebuilds, verify artifacts, preserve
+   hashes, stop on unexpected side effects.
+2. SQLite gate: run real native migration/transaction/repository tests; keep
+   CR-02/04/05 blocked on any failure or inconclusive result.
+3. Electron gate: run controlled startup and boundary probes; keep CR-03
+   implemented-not-validated until runtime evidence is retained.
+4. Dependency gate: only after separate approval, evaluate Electron upgrade
+   compatibility; update manifest/lockfile in its own reviewed commit and
+   rerun audit/build/tests.
+5. Packaging gate: separately authorize packaging, test clean Windows
+   installation, verify artifact hashes and uninstall behavior.
+6. Commercial gate: require all applicable evidence, unresolved-defect review,
+   security limitations, dependency/license report, recovery evidence, and
+   genuine independent review. No marketplace recommendation before then.
+
+### Exact next-stage commands and side effects
+
+These commands are proposed, not executed:
+
+```powershell
+git status --short
+git rev-parse HEAD
+Get-FileHash package.json,package-lock.json -Algorithm SHA256
+npm config get ignore-scripts
+npm ls electron better-sqlite3 typescript --depth=0
+npm rebuild electron --foreground-scripts
+npm rebuild better-sqlite3 --foreground-scripts
+Test-Path node_modules\electron\dist\electron.exe
+Get-ChildItem node_modules\better-sqlite3 -Recurse -Filter *.node
+npm test
+npm exec tsc -- --noEmit
+npm start
+```
+
+`npm rebuild` executes package scripts and may download or compile native
+code. `npm test` creates disposable test databases only after native SQLite
+tests are added. `npm start` launches the Electron application and creates
+desktop/runtime side effects. The final command requires controlled process
+cleanup and runtime evidence. Execute none of these in planning stage.
+
+Required approval before execution: explicit authorization for third-party
+install-script execution and possible binary downloads; explicit
+authorization for native SQLite runtime tests and disposable database
+creation; explicit authorization to launch and close Electron; and separate
+approval for any dependency, environment-policy, packaging, or remote change.
+
 ## Prioritized remediation plan
 
 1. **P0 — Establish deterministic proof.** Authorize and add TypeScript
