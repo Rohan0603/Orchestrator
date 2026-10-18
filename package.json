@@ -6,7 +6,7 @@
   "main": "dist/main/main.js",
   "scripts": {
     "build": "tsc --build && node scripts/copy-renderer-assets.mjs",
-    "test": "tsc -p tsconfig.test.json && node --test dist-test/tests/deterministic.test.js dist-test/tests/sqlite-runtime.test.js",
+    "test": "tsc -p tsconfig.test.json && node scripts/run-electron-tests.mjs --expected=10 dist-test/tests/deterministic.test.js && node scripts/run-electron-tests.mjs --expected=5 dist-test/tests/sqlite-runtime.test.js",
     "start": "electron ."
   },
   "dependencies": {

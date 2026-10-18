@@ -746,6 +746,97 @@ Commercial readiness remains **BLOCKED**. Recovery, cancellation,
 process-termination, packaging, clean-machine installation, adapter/provider
 qualification, independent review, and release authorization remain open.
 
+## P0.8 canonical integration, security qualification, and packaging record
+
+P0.8 started from `5253095aa468ec980ee48c100eb5c2919298d0` with a clean
+worktree. Observed baseline: Electron `44.9.0`, better-sqlite3 `12.11.1`,
+Node `v24.19.0`, npm `12.0.2`, TypeScript `5.9.3`, Windows x64, and audit
+result `0` vulnerabilities.
+
+### Changes
+
+- [package.json](package.json): canonical `npm test` now compiles tests and
+  invokes the repository-local bounded Electron test wrapper twice, with
+  expected result counts `10` and `5`.
+- [scripts/run-electron-tests.mjs](scripts/run-electron-tests.mjs): launches
+  Electron's supported `--test` mode, propagates failures, applies a
+  120-second timeout, and cleans only the spawned PID tree by explicit
+  parent-child ownership.
+- [tests/deterministic.test.ts](tests/deterministic.test.ts): adds terminal
+  outcome coverage proving cancellation/timeout remain inconclusive and
+  disconnected/inconclusive outcomes require recovery.
+- [README.md](README.md): documents canonical test command, Electron-targeted
+  native binding requirements, and packaging limitation.
+
+### Canonical test evidence
+
+| Command | Result | Status |
+|---|---|---|
+| `npm test` | 15/15 passed: 10 deterministic, 5 real SQLite; exit `0` | **PASS** |
+| Controlled failing fixture through `run-electron-tests.mjs --expected=1` | Fixture failed; wrapper exit `1`; temporary fixture removed | **PASS** failure propagation |
+| Electron test-process cleanup | No repository-owned Electron/Node test processes remained after success or failure fixture | **PASS** |
+| `npm exec tsc -- --noEmit` | Exit `0` | **PASS** |
+| `npm run build` | Exit `0` | **PASS** |
+| `npm audit --json` | 0 vulnerabilities | **PASS** audit snapshot |
+
+The five SQLite tests execute inside Electron ABI `149`; no persistence mocks
+replace native SQLite. Tests cover migrations, repeated migrations, migration
+rollback, transaction rollback, repository CRUD, policy/audit, one-shot
+approvals, dispatch idempotency, progress ordering, evidence persistence, and
+closed-database persistence errors.
+
+### Electron security qualification
+
+| Control | Evidence | Status |
+|---|---|---|
+| Startup/database | Controlled Electron 44 app; `getStatus()` returned `ready` / `connected` | **PASS** |
+| Context isolation / Node integration | Renderer reported `typeof process === "undefined"` and `typeof require === "undefined"` | **PASS** |
+| Preload surface | Renderer reported `window.orchestrator` as `object`; no extra API exposed | **PASS** |
+| CSP | Renderer reported restrictive self-only CSP with `object-src 'none'` and `frame-ancestors 'none'` | **PASS** |
+| Malformed IPC | `createTask({})` returned `INVALID_INPUT` / `Invalid task payload` | **PASS** |
+| New windows | `window.open('about:blank') === null` | **PASS** |
+| Top-level/frame navigation | Renderer-created anchor to `file:///C:/Windows/win.ini` left URL at intended local renderer; `will-navigate` and `will-frame-navigate` guards active | **PASS** |
+| Unauthorized sender | No safe controlled second-webContents sender-forgery fixture available without adding a privileged test surface | **UNVERIFIED** |
+| External network access | No external URL opened; no remote access added | **PASS** scope check |
+
+### Recovery and cancellation
+
+| Requirement | Evidence | Status |
+|---|---|---|
+| Duplicate/out-of-order progress | Deterministic cursor test | **PASS** |
+| Uncertain terminal outcomes fail closed | Deterministic `classifyTerminalOutcome` test | **PASS** |
+| Durable recovery/restart reconciliation | Contracts and schema only; no restart fault exercise | **UNVERIFIED** |
+| Process ownership before termination | No worker/process ownership implementation exists | **BLOCKED** |
+| Graceful shutdown/escalation | Not implemented or runtime-qualified | **BLOCKED** |
+| Cancellation acknowledgement and uncertain termination | Contract types only; no adapter/runtime exists | **BLOCKED** |
+| External worker/provider side effects | Not run | **NOT TESTED** |
+
+No unrelated process was terminated. Test cleanup used only explicit PIDs
+created by P0.8 harnesses.
+
+### Packaging and clean-machine readiness
+
+`npm pack --dry-run --json` exited `0` and listed 49 source/build entries, but
+this is an npm archive simulation, not an Electron installer. No
+`electron-builder`, Electron Forge, or Electron Packager is installed. The
+archive does not prove packaged startup, native-module placement, installer
+behavior, or clean-machine installation.
+
+| Gate | Result | Status |
+|---|---|---|
+| Local compiled assets | `npm run build` passed | **PASS** |
+| Native runtime in local workspace | Electron 44 ABI 149 binding loads and queries SQLite | **PASS** |
+| Distributable Electron package | No packaging configuration/tool installed | **BLOCKED** |
+| Package asset/resource inspection | npm archive contains source and `dist`; not an application package | **UNVERIFIED** |
+| Clean-machine install | No clean Windows machine or VM used | **NOT TESTED** |
+| Secrets/local DB exclusion | `.gitignore` excludes `.env*`, `*.db`, build output; archive is not release package | **UNVERIFIED** |
+
+Commercial readiness remains **BLOCKED**. Remaining release gates include
+unauthorized-sender qualification, recovery/cancellation/process ownership,
+packaging, clean-machine installation, adapter/provider conformance,
+independent review, and release authorization. This is self-review, not
+independent review.
+
 ## Prioritized remediation plan
 
 1. **P0 — Establish deterministic proof.** Authorize and add TypeScript

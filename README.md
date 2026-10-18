@@ -109,13 +109,24 @@ Install dependencies with authorized npm access, then use the existing scripts:
 ```text
 npm install
 npm run build
+npm test
 npm start
 ```
 
-Build, startup, security checks, migration exercises, and runtime qualification
-were not run under Stages 1-4 authorization. Node/Electron/native
-SQLite compatibility remains unverified until separately authorized validation.
-Independent review remains blocked by the permanent single-agent rule.
+`npm test` compiles both suites, then runs ten deterministic contract tests and
+five real SQLite tests under Electron 44. The Electron-targeted native SQLite
+binding cannot load under ordinary Node.js; use `npm test` rather than invoking
+the compiled tests with `node --test`.
+
+Runtime requirements: Windows x64, Node.js `24.x`, npm `12.x`, Electron
+`44.9.0`, and `better-sqlite3` compiled for Electron ABI `149`. Native
+compilation requires the official Visual Studio Build Tools C++ workload and a
+compatible Windows SDK.
+
+No application packaging configuration exists yet. `npm run build` produces
+compiled application assets, not an installer or distributable package.
+Clean-machine installation, packaging, recovery qualification, adapter
+qualification, and independent review remain unverified or blocked.
 
 ## Commercial readiness
 

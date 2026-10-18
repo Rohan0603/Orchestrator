@@ -8,9 +8,11 @@ import {
   HARNESS_ADAPTER_CONTRACT_VERSION,
   type CapabilityManifest,
   type RouteIdentity,
-  type RouteRequirements
+  type RouteRequirements,
+  type TerminalOutcome
 } from "../src/harness/adapter-contract";
 import {
+  classifyTerminalOutcome,
   validateProgressEvent,
   type ProgressCursor
 } from "../src/dispatch/dispatch-contract";
@@ -258,4 +260,41 @@ test("evidence acceptance requires orchestrator verification and completeness", 
     false
   );
   assert.equal(isAcceptableEvidence({ ...evidence, status: "incomplete" }), false);
+});
+
+test("uncertain terminal outcomes require recovery before acceptance", () => {
+  const correlation = progress(1).correlation;
+  const outcome = (
+    kind: "succeeded" | "cancelled" | "timed_out" | "disconnected" | "inconclusive"
+  ): TerminalOutcome => {
+    const error = {
+      class: "ambiguous" as const,
+      code: "AMBIGUOUS",
+      message: "State is unknown",
+      retryable: false,
+      correlation
+    };
+    if (kind === "inconclusive") {
+      return {
+        kind,
+        correlation,
+        reportedAt: "2026-01-01T00:00:00.000Z",
+        evidence: [],
+        error
+      };
+    }
+    return {
+      kind,
+      correlation,
+      reportedAt: "2026-01-01T00:00:00.000Z",
+      evidence: [],
+      error: null
+    };
+  };
+
+  assert.equal(classifyTerminalOutcome(outcome("succeeded")), "verification");
+  assert.equal(classifyTerminalOutcome(outcome("cancelled")), "inconclusive");
+  assert.equal(classifyTerminalOutcome(outcome("timed_out")), "inconclusive");
+  assert.equal(classifyTerminalOutcome(outcome("disconnected")), "recovery_required");
+  assert.equal(classifyTerminalOutcome(outcome("inconclusive")), "recovery_required");
 });
