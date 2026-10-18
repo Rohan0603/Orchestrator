@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "trial-result-v1",
+  "experimentId": "baseline-deterministic-fixture",
+  "trialId": "deterministic-qualification-2026-10-18",
+  "replicate": 1,
+  "sourceRevision": "51f54db",
+  "fixtureSnapshot": "repository-local-fixture",
+  "adapter": {
+    "adapterId": "local-fixture",
+    "protocol": "fixture",
+    "provider": "local-fixture",
+    "model": "deterministic",
+    "routeIdentity": "local-fixture"
+  },
+  "status": "blocked",
+  "validity": {
+    "valid": true,
+    "reason": "Deterministic qualification completed, but task acceptance is blocked by unavailable independent review."
+  },
+  "gates": {
+    "deterministicTests": { "status": "passed", "count": 26 },
+    "lifecyclePersistence": "passed",
+    "ipcSenderBoundary": "passed",
+    "liveProviderQualification": "blocked",
+    "independentReview": "blocked",
+    "processOwnership": "blocked"
+  },
+  "usage": {
+    "available": false,
+    "reason": "No trustworthy provider telemetry in fixture route"
+  },
+  "intervention": {
+    "required": false,
+    "reason": null
+  },
+  "artifacts": [
+    "npm test",
+    "npm run build"
+  ],
+  "limitations": [
+    "Fixture success stops at verification because independent review is unavailable.",
+    "This trial does not select CLI JSON, SDK/server, or ACP.",
+    "No commercial-readiness claim follows from this result."
+  ]
+}

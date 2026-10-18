@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "experiment-config-v1",
+  "experimentId": "baseline-deterministic-fixture",
+  "hypothesis": "H1,H2,H3",
+  "replicates": 3,
+  "worker": {
+    "adapterId": "local-fixture",
+    "protocol": "fixture",
+    "provider": "local-fixture",
+    "model": "deterministic"
+  },
+  "acceptance": {
+    "maxRepairCycles": 2,
+    "requiresIndependentReview": true
+  },
+  "safety": {
+    "externalRepositoryMutation": false,
+    "externalProviderCalls": false
+  }
+}

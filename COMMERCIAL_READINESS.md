@@ -4,6 +4,19 @@ Commercial release is blocked until every applicable hard gate has evidence.
 This matrix records current evidence without converting source inspection or
 commits into runtime proof.
 
+## Research artifact pass
+
+The repository now includes the research charter, implemented architecture,
+decision register, experiment protocol, research status, commercial handoff,
+and pinned experiment artifact structure. These documents preserve blocked and
+unvalidated gates; they do not upgrade any commercial-readiness status.
+
+The authorized current checkout validation reran `npm run build` and
+`npm test`: build passed and the existing 26-test suite passed. Electron
+reported non-fatal GPU/network process diagnostics during tests. No live
+provider, independent reviewer, process-ownership, clean-machine, packaging,
+or backup/restore qualification was established by this run.
+
 ## Latest implementation pass
 
 The current checkout adds durable lifecycle projection without widening worker

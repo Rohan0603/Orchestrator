@@ -164,6 +164,20 @@ unmanaged application directory, not an installer or signed release.
 Clean-machine installation, process cancellation qualification, adapter
 qualification, and independent review remain unverified or blocked.
 
+## Research artifacts
+
+- [Research charter](docs/RESEARCH_CHARTER.md)
+- [Implemented architecture](docs/ARCHITECTURE.md)
+- [Decision register](docs/DECISION_REGISTER.md)
+- [Experiment protocol](docs/EXPERIMENT_PROTOCOL.md)
+- [Research status](docs/RESEARCH_STATUS.md)
+- [Commercial product handoff](docs/COMMERCIAL_PRODUCT_HANDOFF.md)
+- [Experiment decision report](experiments/DECISION_REPORT.md)
+
+The experiment tree stores pinned configuration, fixture/verifier conventions,
+trial schema, and raw-result/report conventions. It does not claim live
+provider qualification; unavailable prerequisites remain blocked.
+
 ## Commercial readiness
 
 [COMMERCIAL_READINESS.md](COMMERCIAL_READINESS.md) is the current
