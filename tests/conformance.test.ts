@@ -11,6 +11,10 @@ import {
 } from "../src/harness/adapter-contract";
 import { ConformanceFixtureAdapter } from "../src/harness/conformance-fixture";
 import { classifyTerminalOutcome, validateProgressEvent } from "../src/dispatch/dispatch-contract";
+import {
+  mergeOpenCodeUsage,
+  parseOpenCodeEvent
+} from "../src/harness/opencode-cli-adapter";
 
 const correlation: Correlation = {
   dispatchId: "dispatch",
@@ -162,4 +166,18 @@ test("capability manifests reject duplicate and incomplete declarations", () => 
     }
   );
   assert.equal(blocked.decision, "blocked");
+});
+
+test("OpenCode parser quarantines malformed JSON and preserves missing usage fields", () => {
+  assert.equal(parseOpenCodeEvent("not-json"), null);
+  assert.equal(parseOpenCodeEvent("x".repeat(256 * 1024 + 1)), null);
+  const event = parseOpenCodeEvent('{"part":{"tokens":{"input":3}}}');
+  assert.ok(event);
+  assert.deepEqual(mergeOpenCodeUsage(null, event), {
+    total: null,
+    input: 3,
+    output: null,
+    reasoning: null,
+    cost: null
+  });
 });

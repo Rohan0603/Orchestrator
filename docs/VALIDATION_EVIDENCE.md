@@ -15,7 +15,7 @@ Environment for current validation:
 | Command | Exit | Result | Notes |
 |---|---:|---|---|
 | `npm exec tsc -- --noEmit` | 0 | PASS | No diagnostics |
-| `npm test` | 0 | PASS | 28 tests: 11 deterministic, 3 conformance, 5 execution, 8 SQLite, 1 Electron IPC |
+| `npm test` | 0 | PASS | 29 tests: 11 deterministic, 4 conformance, 5 execution, 8 SQLite, 1 Electron IPC |
 | `npm run build` | 0 | PASS | TypeScript build and renderer assets |
 | `npm audit --json` | 0 | PASS | 0 critical, high, moderate, or low vulnerabilities in current install |
 | `git diff --check` | 0 | PASS | No whitespace errors |
@@ -58,7 +58,7 @@ At commit `c1fe36e` on Windows with Node `v24.19.0`, npm `12.0.2`, Electron
 
 | Command | Exit | Result |
 |---|---:|---|
-| `npm test` | 0 | PASS, 28/28 tests |
+| `npm test` | 0 | PASS, 29/29 tests |
 | `npm exec tsc -- --noEmit` | 0 | PASS |
 | `npm run build` | 0 | PASS |
 | `npm audit --json` | 0 | PASS, 0 critical/high/moderate/low |

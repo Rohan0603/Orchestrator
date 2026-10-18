@@ -78,6 +78,31 @@ function truncate(value: string, limit: number): string {
   return value.length <= limit ? value : `${value.slice(0, limit)}...[truncated]`;
 }
 
+export function parseOpenCodeEvent(line: string): OpenCodeEvent | null {
+  if (!line.trim() || line.length > MAX_EVENT_LINE) return null;
+  try {
+    return JSON.parse(line) as OpenCodeEvent;
+  } catch {
+    return null;
+  }
+}
+
+export function mergeOpenCodeUsage(
+  previous: OpenCodeUsage | null,
+  event: OpenCodeEvent
+): OpenCodeUsage | null {
+  const tokens = event.tokens ?? event.part?.tokens;
+  const cost = event.cost ?? event.part?.cost;
+  if (!tokens && cost === undefined) return previous;
+  return {
+    total: tokens?.total ?? previous?.total ?? null,
+    input: tokens?.input ?? previous?.input ?? null,
+    output: tokens?.output ?? previous?.output ?? null,
+    reasoning: tokens?.reasoning ?? previous?.reasoning ?? null,
+    cost: cost ?? previous?.cost ?? null
+  };
+}
+
 function error(
   request: CreateRunRequest,
   errorClass: AdapterError["class"],
@@ -204,6 +229,14 @@ export class OpenCodeCliAdapter implements HarnessAdapter {
     if (!request.workingDirectory) {
       return error(request, "invalid_request", "WORKING_DIRECTORY_REQUIRED", "OpenCode CLI requires a working directory");
     }
+    if (this.options.executable.toLowerCase().endsWith(".cmd")) {
+      return error(
+        request,
+        "invalid_request",
+        "UNSAFE_SHELL_EXECUTABLE",
+        "OpenCode CLI requires a resolved executable; shell command files are not accepted"
+      );
+    }
     const child = spawn(
       this.options.executable,
       [
@@ -221,7 +254,7 @@ export class OpenCodeCliAdapter implements HarnessAdapter {
       {
         cwd: request.workingDirectory,
         windowsHide: true,
-        shell: this.options.executable.toLowerCase().endsWith(".cmd"),
+        shell: false,
         stdio: ["ignore", "pipe", "pipe"]
       }
     );
@@ -376,28 +409,12 @@ export class OpenCodeCliAdapter implements HarnessAdapter {
 
   private handleLine(state: ProcessState, correlation: Correlation, line: string): void {
     if (!line.trim()) return;
-    if (line.length > MAX_EVENT_LINE) {
+    const event = parseOpenCodeEvent(line);
+    if (!event) {
       state.malformedEvents += 1;
       return;
     }
-    let event: OpenCodeEvent;
-    try {
-      event = JSON.parse(line) as OpenCodeEvent;
-    } catch {
-      state.malformedEvents += 1;
-      return;
-    }
-    const tokens = event.tokens ?? event.part?.tokens;
-    const cost = event.cost ?? event.part?.cost;
-    if (tokens || cost !== undefined) {
-      state.usage = {
-        total: tokens?.total ?? state.usage?.total ?? null,
-        input: tokens?.input ?? state.usage?.input ?? null,
-        output: tokens?.output ?? state.usage?.output ?? null,
-        reasoning: tokens?.reasoning ?? state.usage?.reasoning ?? null,
-        cost: cost ?? state.usage?.cost ?? null
-      };
-    }
+    state.usage = mergeOpenCodeUsage(state.usage, event);
     const message = event.part?.text
       ? truncate(event.part.text, MAX_PROGRESS_MESSAGE)
       : event.part?.tool
