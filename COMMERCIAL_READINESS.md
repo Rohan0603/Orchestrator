@@ -29,12 +29,12 @@ does not.
 | CR-01 | Type safety, build reproducibility / High | `npm exec tsc -- --noEmit`; `npm run build`; clean-machine install remains separate | Typecheck/build succeed; clean-machine reproduction succeeds | Typecheck and local production build passed; clean-machine install not run | P0-A record below | implemented-not-validated | `7edc5d2` / `0.1.0` | Run clean-machine reproduction under separate authorization |
 | CR-02 | SQLite migrations, transactions, rollback / Critical | Fresh and upgraded database migration tests; injected persistence failures | Versions advance atomically; failures roll back; no success-shaped fallback | Runtime migration/rollback tests not run; source review only | P0-B record below | blocked | `7edc5d2` / `0.1.0` | Authorize SQLite runtime and failure exercises |
 | CR-03 | Electron security and IPC boundary / Critical | Startup inspection, IPC sender/payload tests, renderer privilege tests, CSP review | Renderer remains sandboxed, isolated, Node-disabled, and narrow-API only | Static source review confirms flags/CSP/sender and payload guards; runtime checks not run | P0-C record below | implemented-not-validated | `7edc5d2` / `0.1.0` | Run security-focused validation; preserve main-process ownership |
-| CR-04 | Policy, risk, exact approval / Critical | Deterministic unit/integration cases for decisions, expiry, context changes, one-shot consumption, persistence failure | Fail closed; no mismatched, expired, consumed, or prohibited action proceeds | Source contracts exist; tests not run | None | implemented-not-validated | `7edc5d2` / `0.1.0` | Add focused tests and durable transaction evidence |
-| CR-05 | Dispatch idempotency and evidence provenance / Critical | Deterministic dispatch/event/evidence cases plus persistence failure cases | Duplicate or uncertain dispatch is blocked; invalid evidence cannot satisfy acceptance | Source contracts exist; tests not run | None | implemented-not-validated | `7edc5d2` / `0.1.0` | Add tests; verify schema and cursor behavior at runtime |
+| CR-04 | Policy, risk, exact approval / Critical | Deterministic unit/integration cases for decisions, expiry, context changes, one-shot consumption, persistence failure | Fail closed; no mismatched, expired, consumed, or prohibited action proceeds | Pure policy/approval cases pass; persistence-error and transactional consumption tests blocked by native SQLite readiness | P0.2 record below | implemented-not-validated | `ad8e663` / `0.1.0` | Run SQLite-backed transaction and failure tests after native readiness |
+| CR-05 | Dispatch idempotency and evidence provenance / Critical | Deterministic dispatch/event/evidence cases plus persistence failure cases | Duplicate or uncertain dispatch is blocked; invalid evidence cannot satisfy acceptance | Pure route/progress/evidence cases pass; durable idempotency and cursor tests blocked by native SQLite readiness | P0.2 record below | implemented-not-validated | `ad8e663` / `0.1.0` | Run SQLite-backed dispatch and evidence tests after native readiness |
 | CR-06 | Harness capability and route identity / Critical | Authorized adapter conformance trials against every mandatory capability | Mandatory gaps block; provider/model identity and fallback are explicit | No adapter integrated or exercised | None | blocked | `7edc5d2` / `0.1.0` | Qualify candidate only after conformance evidence |
 | CR-07 | Cancellation, deadlines, restart, recovery / Critical | Authorized fault, process-ownership, restart, timeout, disk/persistence failure exercises | Unknown state remains recovery-required; unsafe redispatch is prevented | Not implemented/validated end-to-end | None | blocked | `7edc5d2` / `0.1.0` | Implement remaining lifecycle/recovery behavior, then exercise |
 | CR-08 | Dependency, licensing, packaging, installation / High | `npm ls`; `npm audit --json`; package license metadata; native artifact inspection; clean Windows install | Dependencies acceptable; install/startup reproducible; no unsafe scripts/config | MIT/Apache direct licenses recorded; 2 high and 4 moderate vulnerabilities; Electron and SQLite native binaries absent; packaging not run | P0-D record below | blocked | `7edc5d2` / `0.1.0` | Do not upgrade/remediate without authorization; resolve native install and audit gates |
-| CR-09 | Regression and release qualification / High | Repeatable deterministic suite, release checklist, clean-machine rerun | Required suite passes at pinned commit; failures retained and triaged | No test suite exists; only typecheck/build ran | P0-A record below | blocked | `7edc5d2` / `0.1.0` | Build focused deterministic test harness and qualification protocol |
+| CR-09 | Regression and release qualification / High | Repeatable deterministic suite, release checklist, clean-machine rerun | Required suite passes at pinned commit; failures retained and triaged | Nine pure deterministic tests pass; clean-machine, runtime, packaging, and release qualification remain unvalidated | P0.2 record below | implemented-not-validated | `ad8e663` / `0.1.0` | Expand after native readiness; run clean-machine release qualification |
 | CR-10 | Independent review and acceptance / Critical | Authorized independent human/reviewer evaluation against frozen criteria | Tier 2/3 review is independent; acceptance never derives from worker claim | AI-assisted source review only; independent review unavailable | Commit/source review only | blocked | `7edc5d2` / `0.1.0` | Obtain authorized independent review mechanism; do not waive |
 | CR-11 | Nondeterministic behavior / High | Three independent trials initially; expand to 5–10+ when variability/risk warrants | Inputs, configuration, traces, reset steps, and outcome variance retained | No trials run | None | blocked | `7edc5d2` / `0.1.0` | Define experiment protocol after deterministic gates |
 
@@ -61,6 +61,71 @@ P0 result: compiler/build baseline established, but product remains blocked
 for runtime, security qualification, persistence qualification, dependency
 remediation, recovery, adapter conformance, deterministic tests, and
 independent review.
+
+## P0.2 deterministic test and dependency record
+
+P0.2 tests and metadata inspection ran locally against test checkpoint
+`ad8e663` with no package changes, native install-script enablement, startup,
+provider call, recovery exercise, or destructive security exercise.
+
+### Prioritized deterministic test plan
+
+| Priority / risk | Observable case | Expected result | Evidence |
+|---|---|---|---|
+| P0 / Critical | Valid and terminal run-state transitions | Valid transition succeeds; terminal escape throws | `tests/deterministic.test.ts` lifecycle test |
+| P0 / Critical | Malformed, prohibited, missing-capability, and incomplete-evidence policy inputs | Invalid input blocks; prohibited action denies; missing prerequisites block | Policy test assertions |
+| P0 / Critical | Exact approval context, policy version, expiry, and consumed state | Mismatch, policy change, expiry, and reuse reject | Approval test assertions |
+| P0 / Critical | Missing and unsatisfied conditional route capabilities | Mandatory gaps block; missing manifest entry is unverified | Route test assertions |
+| P0 / Critical | Adapter-reported route identity | Known adapter identity permits route; orchestrator-reported identity blocks | Route identity test assertions |
+| P0 / Critical | Duplicate, out-of-order, and correlation-mismatched progress | Duplicate/out-of-order events reject; mismatched events quarantine | Progress test assertions |
+| P0 / Critical | Evidence provenance, completeness, and independent verification | Only complete orchestrator-verified evidence is acceptable | Evidence test assertions |
+| P0 / Critical | SQLite transaction rollback and persistence failures | Failed transaction leaves no partial success; errors remain explicit | **Blocked** until native SQLite runtime is restored; no mock claimed as proof |
+
+### Executed test result
+
+| Command | Actual result | Status | Evidence |
+|---|---|---|---|
+| `npm test` | TypeScript test compilation passed; Node test runner passed 9/9 tests, 0 failed | **PASS** for pure deterministic contracts | `tests/deterministic.test.ts`; no coverage report generated |
+
+Pure tests do not establish SQLite persistence, Electron runtime security,
+recovery, packaging, clean-machine reproducibility, or adapter compatibility.
+
+### Dependency audit investigation
+
+Installed direct versions remain `better-sqlite3@12.11.1`,
+`electron@38.8.6`, and `typescript@5.9.3`. `npm audit --json` reports
+0 critical, 2 high, 4 moderate, 0 low, and 0 info findings across 106
+dependencies.
+
+| Package/path | Severity | Finding or dependency path | Suggested fix | Compatibility assessment |
+|---|---|---|---|---|
+| `electron` | High | Electron security advisories through current Electron tree | `electron@44.9.0` | Major upgrade; Electron 44 requires Node `>=22.12.0`; requires separate compatibility, packaging, and security validation |
+| `extract-zip` via `electron` | High | Symlink path traversal/arbitrary archive write advisories | Electron `44.9.0` | Transitive fix coupled to major Electron upgrade; no isolated upgrade performed |
+| `@electron/get` via `global-agent` | Moderate | Vulnerable `global-agent` range | Electron `44.9.0` | Transitive fix coupled to major Electron upgrade |
+| `global-agent` via `roarr` | Moderate | Vulnerable `global-agent` range | Electron `44.9.0` | Transitive fix coupled to major Electron upgrade |
+| `roarr` via `sprintf-js` | Moderate | Vulnerable `roarr` range | Electron `44.9.0` | Transitive fix coupled to major Electron upgrade |
+| `sprintf-js` | Moderate | Unbounded precision denial of service | Electron `44.9.0` | Transitive fix coupled to major Electron upgrade |
+
+`npm audit fix --force` was not run. No package was upgraded, removed, or
+reinstalled. Direct package licenses remain Electron MIT, better-sqlite3 MIT,
+and TypeScript Apache-2.0; full transitive license inventory remains
+outstanding.
+
+### Native readiness investigation
+
+`npm config get ignore-scripts` returned `false`, so npm project config does
+not intentionally disable scripts. Package metadata declares Electron
+`postinstall: node install.js` and better-sqlite3
+`install: prebuild-install || node-gyp rebuild --release`. The current
+environment previously blocked these native install scripts. Current checks
+still find no `node_modules\electron\dist\electron.exe` and no
+better-sqlite3 `.node` binary.
+
+Proposed remediation, not executed: obtain explicit environment authorization
+for native install scripts, run a clean dependency installation in an approved
+Windows environment, verify Electron executable and better-sqlite3 binary
+presence, then run separate SQLite and Electron runtime gates. Do not enable
+scripts or change environment policy as part of this checkpoint.
 
 ## Prioritized remediation plan
 
