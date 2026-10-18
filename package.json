@@ -6,7 +6,7 @@
   "main": "dist/main/main.js",
   "scripts": {
     "build": "tsc --build && node scripts/copy-renderer-assets.mjs",
-    "test": "tsc -p tsconfig.test.json && node scripts/run-electron-tests.mjs --expected=11 dist-test/tests/deterministic.test.js && node scripts/run-electron-tests.mjs --expected=2 dist-test/tests/conformance.test.js && node scripts/run-electron-tests.mjs --expected=5 dist-test/tests/execution.test.js && node scripts/run-electron-tests.mjs --expected=8 dist-test/tests/sqlite-runtime.test.js && node scripts/run-electron-tests.mjs --expected=1 dist-test/tests/ipc-security.test.js",
+    "test": "tsc -p tsconfig.test.json && node scripts/run-electron-tests.mjs --expected=11 dist-test/tests/deterministic.test.js && node scripts/run-electron-tests.mjs --expected=3 dist-test/tests/conformance.test.js && node scripts/run-electron-tests.mjs --expected=5 dist-test/tests/execution.test.js && node scripts/run-electron-tests.mjs --expected=8 dist-test/tests/sqlite-runtime.test.js && node scripts/run-electron-tests.mjs --expected=1 dist-test/tests/ipc-security.test.js",
     "package:win": "npm run build && electron-packager . Orchestrator --platform=win32 --arch=x64 --out=out --overwrite --asar",
     "start": "electron ."
   },

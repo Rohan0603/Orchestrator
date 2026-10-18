@@ -48,9 +48,11 @@ interface ProcessState {
   readonly progressHandlers: Array<(event: ProgressEvent) => void>;
   readonly terminalHandlers: Array<(outcome: TerminalOutcome) => void>;
   readonly stderr: string[];
+  stderrLength: number;
+  malformedEvents: number;
   terminal: TerminalOutcome | null;
   sequence: number;
-  usage: { total: number; input: number; output: number; reasoning: number; cost: number } | null;
+  usage: OpenCodeUsage | null;
 }
 
 export interface OpenCodeCliAdapterOptions {
@@ -61,11 +63,19 @@ export interface OpenCodeCliAdapterOptions {
 }
 
 export interface OpenCodeUsage {
-  readonly total: number;
-  readonly input: number;
-  readonly output: number;
-  readonly reasoning: number;
-  readonly cost: number;
+  readonly total: number | null;
+  readonly input: number | null;
+  readonly output: number | null;
+  readonly reasoning: number | null;
+  readonly cost: number | null;
+}
+
+const MAX_EVENT_LINE = 256 * 1024;
+const MAX_PROGRESS_MESSAGE = 4096;
+const MAX_STDERR = 8192;
+
+function truncate(value: string, limit: number): string {
+  return value.length <= limit ? value : `${value.slice(0, limit)}...[truncated]`;
 }
 
 function error(
@@ -222,6 +232,8 @@ export class OpenCodeCliAdapter implements HarnessAdapter {
       progressHandlers: [],
       terminalHandlers: [],
       stderr: [],
+      stderrLength: 0,
+      malformedEvents: 0,
       terminal: null,
       sequence: 0,
       usage: null
@@ -229,7 +241,13 @@ export class OpenCodeCliAdapter implements HarnessAdapter {
     this.runs.set(runKey, state);
     const lines = createInterface({ input: child.stdout });
     lines.on("line", (line) => this.handleLine(state, correlation, line));
-    child.stderr.on("data", (chunk: Buffer) => state.stderr.push(chunk.toString()));
+    child.stderr.on("data", (chunk: Buffer) => {
+      if (state.stderrLength >= MAX_STDERR) return;
+      const diagnostic = chunk.toString();
+      const remaining = MAX_STDERR - state.stderrLength;
+      state.stderr.push(diagnostic.slice(0, remaining));
+      state.stderrLength += Math.min(diagnostic.length, remaining);
+    });
     child.on("error", (cause: Error) => {
       this.finish(state, correlation, {
         kind: "inconclusive",
@@ -247,6 +265,22 @@ export class OpenCodeCliAdapter implements HarnessAdapter {
     });
     child.on("close", (exitCode) => {
       if (state.terminal) return;
+      if (state.malformedEvents > 0) {
+        this.finish(state, correlation, {
+          kind: "inconclusive",
+          correlation,
+          reportedAt: new Date().toISOString(),
+          evidence: [],
+          error: {
+            class: "incomplete_evidence",
+            code: "OPENCODE_MALFORMED_JSON",
+            message: `OpenCode emitted ${state.malformedEvents} malformed JSON event(s)`,
+            retryable: false,
+            correlation
+          }
+        });
+        return;
+      }
       this.finish(state, correlation, {
         kind: exitCode === 0 ? "succeeded" : "failed",
         correlation,
@@ -257,7 +291,10 @@ export class OpenCodeCliAdapter implements HarnessAdapter {
           : {
               class: "permanent",
               code: "OPENCODE_EXIT",
-              message: `OpenCode exited with status ${exitCode}: ${state.stderr.join("").trim()}`,
+              message: truncate(
+                `OpenCode exited with status ${exitCode}: ${state.stderr.join("").trim()}`,
+                MAX_STDERR
+              ),
               retryable: false,
               correlation
             }
@@ -338,25 +375,31 @@ export class OpenCodeCliAdapter implements HarnessAdapter {
   }
 
   private handleLine(state: ProcessState, correlation: Correlation, line: string): void {
+    if (!line.trim()) return;
+    if (line.length > MAX_EVENT_LINE) {
+      state.malformedEvents += 1;
+      return;
+    }
     let event: OpenCodeEvent;
     try {
       event = JSON.parse(line) as OpenCodeEvent;
     } catch {
+      state.malformedEvents += 1;
       return;
     }
     const tokens = event.tokens ?? event.part?.tokens;
     const cost = event.cost ?? event.part?.cost;
     if (tokens || cost !== undefined) {
       state.usage = {
-        total: tokens?.total ?? 0,
-        input: tokens?.input ?? 0,
-        output: tokens?.output ?? 0,
-        reasoning: tokens?.reasoning ?? 0,
-        cost: cost ?? 0
+        total: tokens?.total ?? state.usage?.total ?? null,
+        input: tokens?.input ?? state.usage?.input ?? null,
+        output: tokens?.output ?? state.usage?.output ?? null,
+        reasoning: tokens?.reasoning ?? state.usage?.reasoning ?? null,
+        cost: cost ?? state.usage?.cost ?? null
       };
     }
     const message = event.part?.text
-      ? event.part.text
+      ? truncate(event.part.text, MAX_PROGRESS_MESSAGE)
       : event.part?.tool
         ? `tool:${event.part.tool}`
         : event.type ?? "opencode-event";

@@ -34,6 +34,41 @@ export interface CapabilityManifest {
   readonly capabilities: readonly CapabilityDeclaration[];
 }
 
+export function validateCapabilityManifest(
+  manifest: CapabilityManifest
+): readonly string[] {
+  const reasons: string[] = [];
+  if (manifest.contractVersion !== HARNESS_ADAPTER_CONTRACT_VERSION) {
+    reasons.push("Capability manifest contract version is incompatible");
+  }
+  if (!manifest.adapterId.trim()) reasons.push("Capability manifest adapter identity is missing");
+  if (!Number.isFinite(Date.parse(manifest.generatedAt))) {
+    reasons.push("Capability manifest generation time is invalid");
+  }
+  const seen = new Set<CapabilityKey>();
+  for (const capability of manifest.capabilities) {
+    if (seen.has(capability.key)) {
+      reasons.push(`Capability ${capability.key} is declared more than once`);
+    }
+    seen.add(capability.key);
+    if (capability.state === "supported") {
+      if (capability.evidence.length === 0) {
+        reasons.push(`Supported capability ${capability.key} has no evidence`);
+      }
+      if (!capability.version?.trim()) {
+        reasons.push(`Supported capability ${capability.key} has no version`);
+      }
+      if (!capability.environment?.trim()) {
+        reasons.push(`Supported capability ${capability.key} has no environment`);
+      }
+    }
+    if (capability.state === "conditional" && capability.conditions.length === 0) {
+      reasons.push(`Conditional capability ${capability.key} has no conditions`);
+    }
+  }
+  return reasons;
+}
+
 export interface RouteIdentity {
   readonly routeId: string;
   readonly provider: {
@@ -113,9 +148,8 @@ export function evaluateRoute(
 ): RouteEvaluation {
   const missing: CapabilityKey[] = [];
   const reasons: string[] = [];
-  if (manifest.contractVersion !== HARNESS_ADAPTER_CONTRACT_VERSION) {
-    reasons.push("Capability manifest contract version is incompatible");
-  }
+  const manifestIssues = validateCapabilityManifest(manifest);
+  reasons.push(...manifestIssues);
   if (requirements.routeId !== route.routeId) {
     reasons.push("Route requirements do not match route identity");
   }
@@ -141,7 +175,7 @@ export function evaluateRoute(
   return {
     decision:
       missing.length === 0 &&
-      manifest.contractVersion === HARNESS_ADAPTER_CONTRACT_VERSION &&
+      manifestIssues.length === 0 &&
       requirements.routeId === route.routeId &&
       route.provider.state === "known" &&
       route.model.state === "known" &&

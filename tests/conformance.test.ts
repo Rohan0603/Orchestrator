@@ -4,6 +4,7 @@ import {
   capabilityOrUnverified,
   evaluateRoute,
   HARNESS_ADAPTER_CONTRACT_VERSION,
+  validateCapabilityManifest,
   type CapabilityManifest,
   type Correlation,
   type RouteIdentity
@@ -134,4 +135,31 @@ test("adapter contract preserves event ordering and uncertain terminal outcomes"
   assert.equal(classifyTerminalOutcome({ kind: "succeeded", correlation, reportedAt: event.occurredAt, evidence: [], error: null }), "verification");
   assert.equal(classifyTerminalOutcome({ kind: "timed_out", correlation, reportedAt: event.occurredAt, evidence: [], error: null }), "inconclusive");
   assert.equal(classifyTerminalOutcome({ kind: "disconnected", correlation, reportedAt: event.occurredAt, evidence: [], error: null }), "recovery_required");
+});
+
+test("capability manifests reject duplicate and incomplete declarations", () => {
+  const supported = capability("run.create");
+  assert.deepEqual(validateCapabilityManifest(manifest([supported, supported])), [
+    "Capability run.create is declared more than once"
+  ]);
+  assert.deepEqual(
+    validateCapabilityManifest(
+      manifest([{ ...supported, evidence: [], version: null, environment: null }])
+    ),
+    [
+      "Supported capability run.create has no evidence",
+      "Supported capability run.create has no version",
+      "Supported capability run.create has no environment"
+    ]
+  );
+  const blocked = evaluateRoute(
+    manifest([{ ...supported, evidence: [] }]),
+    route,
+    {
+      routeId: route.routeId,
+      allowExplicitFallback: false,
+      capabilities: [{ key: "run.create", mandatory: true, prerequisites: [] }]
+    }
+  );
+  assert.equal(blocked.decision, "blocked");
 });

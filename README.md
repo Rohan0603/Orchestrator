@@ -143,8 +143,8 @@ after fixture launch acknowledgement, and before terminal persistence. Each
 case records `recovery_required` and does not replay its dispatch intent.
 
 `npm test` compiles all suites, then runs eleven deterministic contract tests,
-two adapter conformance tests, five local execution/restart tests, eight real
-SQLite tests, and one real Electron second-WebContents IPC test: 27 tests total. The
+three adapter conformance tests, five local execution/restart tests, eight real
+SQLite tests, and one real Electron second-WebContents IPC test: 28 tests total. The
 Electron-targeted native SQLite
 binding cannot load under ordinary Node.js; use `npm test` rather than invoking
 the compiled tests with `node --test`.
