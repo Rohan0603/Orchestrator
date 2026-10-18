@@ -231,7 +231,9 @@ function createWindow(): BrowserWindow {
   window.webContents.on("will-frame-navigate", (event) => {
     event.preventDefault();
   });
-  void window.loadFile(path.join(__dirname, "../renderer/index.html")).catch((error: unknown) => {
+  const rendererPath = process.env.ORCHESTRATOR_RENDERER_PATH ??
+    path.join(__dirname, "../renderer/index.html");
+  void window.loadFile(rendererPath).catch((error: unknown) => {
     console.error("Renderer load failed", error);
   });
   return window;

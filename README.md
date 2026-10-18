@@ -102,7 +102,8 @@ capture time, completeness, and independent verification are explicit.
 Missing, incomplete, invalid, or unverified evidence is not acceptable proof.
 `src/persistence/dispatch-repository.ts` provides main-process persistence
 boundaries for intents, progress cursors/events, and evidence records.
-Migration/runtime behavior remains unvalidated.
+Electron SQLite tests validate migrations, transactions, restart reconciliation,
+and persistence errors on disposable databases.
 
 Progress events require matching correlation and strictly increasing sequence;
 duplicates and out-of-order events are non-success dispositions. Failed,
@@ -133,10 +134,17 @@ after fixture launch acknowledgement, and before terminal persistence. Each
 case records `recovery_required` and does not replay its dispatch intent.
 
 `npm test` compiles all suites, then runs ten deterministic contract tests,
-two adapter conformance tests, three local execution tests, and seven real
-SQLite tests under Electron 44. The Electron-targeted native SQLite
+two adapter conformance tests, five local execution/restart tests, seven real
+SQLite tests, and one real Electron second-WebContents IPC test. The
+Electron-targeted native SQLite
 binding cannot load under ordinary Node.js; use `npm test` rather than invoking
 the compiled tests with `node --test`.
+
+The IPC integration test proves an authorized primary renderer can create a
+task while a second real `WebContents` receives `UNTRUSTED_SENDER` before
+mutation. Subframe and invalid-origin adversarial calls remain unverified
+because no safe fixture currently exposes the production preload API to those
+contexts.
 
 Runtime requirements: Windows x64, Node.js `24.x`, npm `12.x`, Electron
 `44.9.0`, and `better-sqlite3` compiled for Electron ABI `149`. Native

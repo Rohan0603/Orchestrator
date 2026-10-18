@@ -1146,3 +1146,38 @@ The recovery test proves local durable reconciliation only. It does not prove
 ownership of an external process, cancellation safety, provider behavior,
 acceptance, independent review, clean-machine installation, signing, or
 commercial readiness.
+
+## Process safety and IPC integration pass — 2026-10-18
+
+The current project dependencies and Node/Electron runtime expose no supported
+Windows Job Object API. No project-local binding or FFI layer was added:
+unreviewed native ownership code would not establish verified descendant
+assignment or termination semantics. PID, parent-process, and process-name
+matching remain unsafe ownership substitutes. Real-worker dispatch and
+cancellation therefore remain disabled where process ownership is mandatory.
+
+Added a real Electron integration fixture using the production IPC handlers,
+preload bridge, and sender checks. The authorized primary renderer created one
+task. A second `WebContents` using the same sandboxed, context-isolated preload
+attempted the same privileged mutation and received `UNTRUSTED_SENDER`; the
+primary task count remained unchanged. No privileged testing endpoint was
+added. Subframe and invalid-origin calls remain **UNVERIFIED** because no safe
+fixture currently exposes the production preload API to those contexts.
+
+| Evidence | Result | Status |
+|---|---|---|
+| Authorized primary renderer IPC mutation | 1 real Electron integration test passed | **PASS** |
+| Second-WebContents sender rejection before mutation | 1 real Electron integration test passed | **PASS** |
+| Subframe and invalid-origin adversarial IPC | No safe preload fixture | **UNVERIFIED** |
+| Windows Job Object ownership and descendant termination | No supported project-local API/binding | **BLOCKED** |
+| Graceful 30-second plus 5-second forced cancellation | Ownership prerequisite absent | **BLOCKED** |
+| OpenCode executable readiness | `1.19.0`; CLI available; no route invoked or config changed | **BLOCKED / NOT TESTED** |
+
+Final regression for this pass: `npm test` passed **25/25** (10
+deterministic, 2 conformance, 5 execution/restart, 7 SQLite, 1 real IPC);
+`npm exec tsc -- --noEmit`, `npm run build`, `npm audit` (0 vulnerabilities),
+`git diff --check`, and `npm run package:win` all exited successfully. The
+package was built unsigned for Windows x64; packaged startup was not repeated
+because the previously observed Windows Application Control block remains an
+owner-controlled gate. No clean-machine installation, provider invocation,
+process termination, signing, publication, or distribution was performed.
