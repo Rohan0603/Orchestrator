@@ -57,6 +57,23 @@
 - Conduct self-review with explicit checklists, acceptance criteria, deterministic checks, and recorded evidence when authorized. Label self-review as self-review, not independent review.
 - Preserve approved independent-review requirements. If no separate reviewer can be used because single-agent execution is mandatory, mark that acceptance criterion unmet or blocked; do not waive or redefine it.
 
+## Mandatory Ponytail engineering mode
+
+- Apply the installed Ponytail skill at maximum available intensity on every
+  applicable development, research, planning, implementation, debugging,
+  testing, and refactoring task. Read its actual `SKILL.md` before acting;
+  never invent a substitute.
+- Follow its ladder: question whether work is needed, reuse existing project
+  patterns, prefer standard library and native platform APIs, then use
+  already-installed dependencies before adding code or dependencies.
+- Make the smallest complete change. Avoid duplicate utilities, abstractions,
+  scaffolding, speculative architecture, repeated reads/tool calls, and
+  redundant verification while preserving correctness.
+- Never use Ponytail to remove trust-boundary validation, security controls,
+  error handling, observability, audit evidence, maintainability, or meaningful
+  tests. Explain briefly when security, correctness, or architecture requires
+  additional complexity.
+
 ## Git CLI and stage checkpoints
 
 - Use the Git CLI for repository initialization, inspection, staging, committing,

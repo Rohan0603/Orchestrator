@@ -50,6 +50,23 @@ For every task, record objective, dependencies, permitted files, non-goals, acce
 7. Report changed files, evidence, unperformed validation, risks, and next dependency-ready task.
 8. Conduct self-review with explicit checklists, acceptance criteria, deterministic checks, and recorded evidence when authorized. Label self-review as self-review, not independent review.
 
+## Mandatory Ponytail engineering mode
+
+- Apply installed Ponytail skill at maximum available intensity on every
+  applicable development, research, planning, implementation, debugging,
+  testing, and refactoring task. Read actual Ponytail `SKILL.md` before work;
+  do not fabricate skill rules if source is unavailable.
+- Use Ponytail order: YAGNI, existing project pattern, standard library,
+  native platform API, then already-installed dependency before custom code or
+  new dependency.
+- Ship smallest complete change. Reuse code; avoid duplicate utilities,
+  abstractions, scaffolding, speculative architecture, repeated reads/tool
+  calls, and redundant verification.
+- Ponytail never permits removing validation, security boundaries, error
+  handling, observability, audit evidence, maintainability, or meaningful
+  tests. Explain deviations when security, correctness, or architecture
+  requires added complexity.
+
 ## Git CLI and stage checkpoints
 
 - Use Git CLI for initialization, inspection, staging, committing, branching, and
