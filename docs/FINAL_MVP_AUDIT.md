@@ -64,7 +64,8 @@ See [MVP_ACCEPTANCE_MATRIX](MVP_ACCEPTANCE_MATRIX.md) and
 
 ## Real-worker qualification addendum
 
-Updated at implementation commit `f1958a2` after adapter commit `5f2f132`.
+Updated at documentation commit `c1fe36e` after implementation commits
+`5f2f132` and `f1958a2`.
 OpenCode `1.19.0` CLI JSON is now implemented and exercised with free route
 `opencode/mimo-v2.6-flash-free` against three disposable Git fixtures
 (`experiments/results/real-opencode-durable/`). Each trial persisted dispatch

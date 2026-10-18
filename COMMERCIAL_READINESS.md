@@ -54,7 +54,7 @@ blocked or unverified. This pass does not change those gates.
 | Field | Value |
 |---|---|
 | Product version | `0.1.0` |
-| Validation baseline commit | `048c2a1` |
+| Validation baseline commit | `c1fe36e` |
 | Branch | `master` |
 | Remote publication | No push performed; local branch is ahead of origin |
 | Validation execution authorization | Granted for audit commands and local qualification |
@@ -1128,10 +1128,10 @@ Commercial readiness remains **BLOCKED** by process ownership/cancellation,
 sender-forgery qualification, acceptance verification, live adapter/provider
 qualification, clean-machine installation, signing, and independent review.
 
-OpenCode `1.19.0` is detectable on the development machine. No provider
-configuration, credentials, live invocation, identity, telemetry, cancellation,
-or restart behavior was inspected or qualified. Its presence does not change
-the historical real-worker status at that audit point: **NOT TESTED/BLOCKED**.
+OpenCode `1.19.0` is detectable on the development machine. The current
+CLI-JSON route and three durable free-model trials are recorded below; SDK/API,
+independent review, and cancellation remain separate gates. The historical
+audit point above remains **NOT TESTED/BLOCKED**.
 
 ## Prioritized remediation plan
 
@@ -1272,3 +1272,14 @@ This evidence does not clear commercial gates: Windows process ownership and
 cancellation are blocked, independent review is unavailable, and clean-machine,
 backup/restore, signing, and Application Control validation remain pending.
 Release recommendation remains **do not publish**.
+
+## Cancellation feasibility evidence
+
+Installed production dependencies are Node `v24.19.0`, Electron `44.9.0`,
+`better-sqlite3` `12.11.1`, and no Windows Job Object binding. Node
+`child_process` exposes process spawning but not `CreateJobObject`,
+`AssignProcessToJobObject`, `IsProcessInJob`, or `TerminateJobObject`.
+Microsoft Job Objects documentation confirms those Win32 calls are required
+to establish and terminate owned process groups. Therefore OpenCode
+cancellation remains explicitly unsupported/unverified; no PID heuristic or
+unsafe termination path was added.

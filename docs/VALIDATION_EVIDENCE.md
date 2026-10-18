@@ -49,3 +49,21 @@ preceded worker invocation; progress and orchestrator-verified diff evidence
 were persisted. r7 recorded usage `{total:18100,input:100,output:46,reasoning:34,cost:0}`.
 No trial claims independent review or cancellation. CLI JSON is provisionally
 supported; SDK/server and ACP remain unresolved.
+
+## Current checkout validation
+
+At commit `c1fe36e` on Windows with Node `v24.19.0`, npm `12.0.2`, Electron
+`44.9.0`, and `better-sqlite3` `12.11.1`:
+
+| Command | Exit | Result |
+|---|---:|---|
+| `npm test` | 0 | PASS, 26/26 tests |
+| `npm exec tsc -- --noEmit` | 0 | PASS |
+| `npm run build` | 0 | PASS |
+| `npm audit --json` | 0 | PASS, 0 critical/high/moderate/low |
+| `npm run package:win` | 0 | PASS, unsigned `out\Orchestrator-win32-x64` |
+| `git diff --check` | 0 | PASS |
+
+Electron emitted non-fatal network-service diagnostics during IPC testing.
+Package creation is not clean-machine launch, signing, or Application Control
+evidence.

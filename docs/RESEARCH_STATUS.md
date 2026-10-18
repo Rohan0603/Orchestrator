@@ -1,6 +1,6 @@
 # Research status
 
-Audit date: 2026-10-18. Audited implementation commit: `048c2a1`.
+Audit date: 2026-10-18. Audited implementation/evidence commit: `c1fe36e`.
 
 ## Current evidence
 
