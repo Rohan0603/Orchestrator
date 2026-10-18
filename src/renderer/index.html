@@ -21,6 +21,13 @@
           <label>Title <input name="title" maxlength="200" required /></label>
           <label>Description <textarea name="description" maxlength="10000"></textarea></label>
           <label>Acceptance criterion <input name="criterion" required /></label>
+          <label>Risk tier
+            <select name="riskTier">
+              <option value="1">1 — local fixture eligible</option>
+              <option value="2">2 — approval required</option>
+              <option value="3">3 — stronger controls required</option>
+            </select>
+          </label>
           <button type="submit">Create task</button>
         </form>
         <p id="task-error" role="alert"></p>

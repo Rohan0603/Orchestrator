@@ -71,9 +71,10 @@ cancellation, recovery, verification, review, and acceptance.
 `src/harness/conformance.ts` records the qualification checks and required
 evidence. Deterministic fixture checks cover contract behavior, but all live
 adapter checks remain `blocked`; no real adapter has passed conformance.
-OpenCode remains the initial candidate. ACP, OpenCode server/API,
-and CLI alternatives remain comparison candidates only. No provider or
-harness integration has been selected or qualified.
+OpenCode `1.19.0` is present on this machine, but no provider configuration,
+credentials, or live integration has been inspected or qualified. OpenCode
+remains the initial candidate. ACP, OpenCode server/API, and CLI alternatives
+remain comparison candidates only.
 
 Eventually, real adapter facts must persist with run/attempt identity, route
 identity, progress and terminal events, cancellation/reconciliation state,

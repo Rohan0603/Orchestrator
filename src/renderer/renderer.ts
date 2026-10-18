@@ -38,6 +38,10 @@ async function refresh(): Promise<void> {
         }
       });
       item.append(" ", button);
+    } else {
+      const note = document.createElement("span");
+      note.textContent = " Approval workflow not available in fixture UI.";
+      item.append(note);
     }
     tasks.append(item);
   }
@@ -52,7 +56,7 @@ document.querySelector<HTMLFormElement>("#task-form")?.addEventListener("submit"
     title: String(data.get("title") ?? ""),
     description: String(data.get("description") ?? ""),
     acceptanceCriteria: [String(data.get("criterion") ?? "")],
-    riskTier: 1
+    riskTier: Number(data.get("riskTier") ?? 1) as 1 | 2 | 3
   });
   const error = document.querySelector<HTMLParagraphElement>("#task-error");
   if (error) error.textContent = result.ok ? "" : result.error.message;

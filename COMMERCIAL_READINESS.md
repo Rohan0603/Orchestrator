@@ -1078,6 +1078,11 @@ Commercial readiness remains **BLOCKED** by process ownership/cancellation,
 sender-forgery qualification, acceptance verification, live adapter/provider
 qualification, clean-machine installation, signing, and independent review.
 
+OpenCode `1.19.0` is detectable on the development machine. No provider
+configuration, credentials, live invocation, identity, telemetry, cancellation,
+or restart behavior was inspected or qualified. Its presence does not change
+the real-worker status: **NOT TESTED/BLOCKED**.
+
 ## Prioritized remediation plan
 
 1. **P0 — Establish deterministic proof.** Authorize and add TypeScript
