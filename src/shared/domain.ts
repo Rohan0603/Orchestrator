@@ -23,6 +23,11 @@ export type AttemptOutcome =
 export type RecoveryState = "none" | "uncertain" | "recovery_required" | "reconciled";
 export type AcceptanceDecision = "accepted" | "rejected" | "blocked" | "inconclusive";
 
+export interface AcceptanceRecord {
+  readonly decision: AcceptanceDecision;
+  readonly reason: string;
+}
+
 export interface Task {
   readonly id: string;
   readonly title: string;

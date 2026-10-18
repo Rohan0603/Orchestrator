@@ -181,6 +181,13 @@ test("local fixture execution persists intent, progress, and verification state"
       (scenario.database.prepare("SELECT count(*) AS count FROM progress_events").get() as { count: number }).count,
       1
     );
+    assert.deepEqual(
+      scenario.database.prepare("SELECT decision, reason FROM acceptance_decisions").get(),
+      {
+        decision: "blocked",
+        reason: "Independent review is unavailable"
+      }
+    );
   } finally {
     scenario.database.close();
     rmSync(scenario.directory, { recursive: true, force: true });

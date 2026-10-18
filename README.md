@@ -131,14 +131,17 @@ orchestrator acceptance evidence exists. Each task now displays persisted run
 and attempt history, including recovery-required and disconnected outcomes.
 Startup reconciles interrupted running attempts before opening the renderer;
 uncertain work remains blocked and is never replayed automatically.
+Successful fixture attempts also persist an orchestrator acceptance decision.
+Current decision is `blocked` because no independent reviewer or complete
+verified evidence exists; worker success never becomes task acceptance.
 
 Deterministic failure injection covers uncertainty after dispatch intent,
 after fixture launch acknowledgement, and before terminal persistence. Each
 case records `recovery_required` and does not replay its dispatch intent.
 
-`npm test` compiles all suites, then runs ten deterministic contract tests,
+`npm test` compiles all suites, then runs eleven deterministic contract tests,
 two adapter conformance tests, five local execution/restart tests, seven real
-SQLite tests, and one real Electron second-WebContents IPC test. The
+SQLite tests, and one real Electron second-WebContents IPC test: 26 tests total. The
 Electron-targeted native SQLite
 binding cannot load under ordinary Node.js; use `npm test` rather than invoking
 the compiled tests with `node --test`.

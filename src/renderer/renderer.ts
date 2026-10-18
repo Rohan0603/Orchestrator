@@ -33,7 +33,7 @@ async function refresh(): Promise<void> {
         const runResult = document.querySelector<HTMLParagraphElement>("#run-result");
         if (runResult) {
           runResult.textContent = result.ok
-            ? `Run ${result.value.status}; accepted: ${result.value.accepted}; progress: ${result.value.progressAccepted} accepted, ${result.value.progressRejected} rejected.`
+            ? `Run ${result.value.status}; accepted: ${result.value.accepted}; ${result.value.acceptance?.reason ?? "No acceptance decision recorded"}; progress: ${result.value.progressAccepted} accepted, ${result.value.progressRejected} rejected.`
             : `Run blocked: ${result.error.message}`;
         }
       });

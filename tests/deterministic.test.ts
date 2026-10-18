@@ -17,6 +17,7 @@ import {
   type ProgressCursor
 } from "../src/dispatch/dispatch-contract";
 import { isAcceptableEvidence, type EvidenceRecord } from "../src/evidence/evidence";
+import { evaluateAcceptance } from "../src/acceptance/acceptance";
 
 const context = {
   operation: "run-worker",
@@ -260,6 +261,27 @@ test("evidence acceptance requires orchestrator verification and completeness", 
     false
   );
   assert.equal(isAcceptableEvidence({ ...evidence, status: "incomplete" }), false);
+});
+
+test("acceptance blocks missing independent review and accepts complete evidence", () => {
+  assert.deepEqual(
+    evaluateAcceptance({
+      criteriaVerified: true,
+      deterministicChecksPassed: true,
+      evidenceComplete: false,
+      independentReview: "blocked"
+    }),
+    { decision: "blocked", reason: "Independent review is unavailable" }
+  );
+  assert.deepEqual(
+    evaluateAcceptance({
+      criteriaVerified: true,
+      deterministicChecksPassed: true,
+      evidenceComplete: true,
+      independentReview: "passed"
+    }),
+    { decision: "accepted", reason: "All acceptance gates passed" }
+  );
 });
 
 test("uncertain terminal outcomes require recovery before acceptance", () => {

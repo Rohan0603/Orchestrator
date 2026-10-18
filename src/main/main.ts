@@ -221,7 +221,8 @@ function registerIpc(): void {
         status: result.status,
         accepted: result.accepted,
         progressAccepted: result.progressAccepted,
-        progressRejected: result.progressRejected
+        progressRejected: result.progressRejected,
+        acceptance: result.acceptance
       });
     } catch (error) {
       console.error("Fixture execution failed", error);

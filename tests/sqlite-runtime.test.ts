@@ -76,9 +76,9 @@ function scalar<T extends Record<string, unknown>>(
 test("real SQLite creates schema, enables foreign keys, and reruns migrations", () => {
   withDatabase((database) => {
     assert.equal(database.pragma("foreign_keys", { simple: true }), 1);
-    assert.equal(scalar<{ version: number }>(database, "SELECT version FROM schema_version").version, 3);
+    assert.equal(scalar<{ version: number }>(database, "SELECT version FROM schema_version").version, 4);
     assert.doesNotThrow(() => applyMigrations(database));
-    assert.equal(scalar<{ version: number }>(database, "SELECT version FROM schema_version").version, 3);
+    assert.equal(scalar<{ version: number }>(database, "SELECT version FROM schema_version").version, 4);
     for (const table of ["tasks", "approvals", "policy_decisions", "dispatch_intents", "evidence_records"]) {
       assert.ok(
         database.prepare(

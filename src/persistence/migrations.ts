@@ -134,6 +134,15 @@ const migrations: readonly string[] = [
       independently_verified INTEGER NOT NULL CHECK (independently_verified IN (0, 1)),
       completeness_note TEXT
     );
+  `,
+  `
+    CREATE TABLE IF NOT EXISTS acceptance_decisions (
+      id TEXT PRIMARY KEY NOT NULL,
+      run_id TEXT NOT NULL UNIQUE REFERENCES runs(id),
+      decision TEXT NOT NULL CHECK (decision IN ('accepted', 'rejected', 'blocked', 'inconclusive')),
+      reason TEXT NOT NULL,
+      evaluated_at TEXT NOT NULL
+    );
   `
 ];
 

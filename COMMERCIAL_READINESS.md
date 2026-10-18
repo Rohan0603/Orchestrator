@@ -16,7 +16,10 @@ authority:
   origin checks as other privileged channels.
 - Renderer displays durable run state and attempt outcome; it does not infer
   lifecycle state from local memory.
-- `npm test`: **PASS**, 25/25.
+- Successful fixture attempts persist an orchestrator-owned acceptance decision.
+  Current decision is `blocked` when independent review or verified evidence is
+  unavailable; worker success cannot become acceptance.
+- `npm test`: **PASS**, 26/26.
 - `npm exec tsc -- --noEmit`: **PASS**.
 
 Process ownership, real-worker dispatch, cancellation, independent review,

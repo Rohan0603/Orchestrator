@@ -9,11 +9,13 @@ import {
   validateProgressEvent,
   type DispatchIntent
 } from "../dispatch/dispatch-contract";
-import type { Approval, Run, Task } from "../shared/domain";
+import type { AcceptanceRecord, Approval, Run, Task } from "../shared/domain";
 import type { WorkspaceTarget } from "../workspace/workspace-contract";
 import { DispatchRepository } from "../persistence/dispatch-repository";
 import { PolicyRepository } from "../persistence/policy-repository";
 import { RunRepository } from "../persistence/run-repository";
+import { AcceptanceRepository } from "../persistence/acceptance-repository";
+import { evaluateAcceptance } from "../acceptance/acceptance";
 
 export interface LocalExecutionInput {
   readonly task: Task;
@@ -42,6 +44,7 @@ export interface LocalExecutionResult {
   readonly accepted: false;
   readonly progressAccepted: number;
   readonly progressRejected: number;
+  readonly acceptance: AcceptanceRecord | null;
 }
 
 export async function executeLocalRun(
@@ -50,6 +53,7 @@ export async function executeLocalRun(
 ): Promise<LocalExecutionResult> {
   const runs = new RunRepository(database);
   const dispatch = new DispatchRepository(database);
+  const acceptance = new AcceptanceRepository(database);
   const policies = new PolicyRepository(database);
   const created = runs.createRun(input.task.id, input.route.routeId);
   const policy = evaluatePolicy(input.action);
@@ -224,7 +228,28 @@ export async function executeLocalRun(
     status === "recovery_required" ? "recovery_required" : "none",
     terminal.error?.message ?? terminal.kind
   );
-  return result(created.run, created.attempt.id, policy, status, progressAccepted, progressRejected);
+  let acceptanceDecision: AcceptanceRecord | null = null;
+  if (terminal.kind === "succeeded") {
+    acceptanceDecision = evaluateAcceptance({
+      criteriaVerified: true,
+      deterministicChecksPassed: true,
+      evidenceComplete: false,
+      independentReview: "blocked"
+    });
+    acceptance.record(
+      created.run.id,
+      acceptanceDecision
+    );
+  }
+  return result(
+    created.run,
+    created.attempt.id,
+    policy,
+    status,
+    progressAccepted,
+    progressRejected,
+    acceptanceDecision
+  );
 }
 
 function result(
@@ -233,7 +258,8 @@ function result(
   policy: PolicyDecisionRecord,
   status: LocalExecutionResult["status"],
   progressAccepted: number,
-  progressRejected: number
+  progressRejected: number,
+  acceptance: AcceptanceRecord | null = null
 ): LocalExecutionResult {
   return {
     run,
@@ -242,6 +268,7 @@ function result(
     status,
     accepted: false,
     progressAccepted,
-    progressRejected
+    progressRejected,
+    acceptance
   };
 }

@@ -1,4 +1,4 @@
-import type { Run, Attempt, Task } from "./domain";
+import type { AcceptanceRecord, Run, Attempt, Task } from "./domain";
 
 export interface CreateTaskInput {
   readonly title: string;
@@ -19,6 +19,7 @@ export interface FixtureRunSummary {
   readonly accepted: false;
   readonly progressAccepted: number;
   readonly progressRejected: number;
+  readonly acceptance: AcceptanceRecord | null;
 }
 
 export interface RunHistoryEntry {
