@@ -673,6 +673,79 @@ verify the binding loads inside Electron (not only Node), rerun all 14 SQLite
 and deterministic tests, rerun Electron startup/security probes, and retain
 process cleanup evidence. Do not switch Electron versions to avoid ABI work.
 
+## P0.7 native runtime recovery and Electron 44 validation record
+
+P0.7 began from commit `2b04bf03ae24bc5693d8f0b98701960c45e02fb6` with the
+worktree clean. No package version, lockfile, npm script policy, or remote was
+changed. The exact package-scoped approvals remained:
+`electron@44.9.0` and `better-sqlite3@12.11.1`.
+
+### Official toolchain installation
+
+Downloaded only the Microsoft official bootstrapper
+`https://aka.ms/vs/17/release/vs_BuildTools.exe`. Authenticode status was
+`Valid`; signer was `Microsoft Corporation`; SHA-256 was
+`2A6AA7D94E38D457A4EB3930FC60056ECAB06865B2EB925E5275B8473A017583`.
+Installer command:
+
+```text
+vs_BuildTools.exe --quiet --wait --norestart --nocache --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended
+```
+
+Installer exit code was `0`. `vswhere` verified complete Visual Studio Build
+Tools `17.14.42` at
+`C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools`.
+MSVC `14.44.35207` x64 compiler is present. Windows SDK components installed
+with the C++ workload. No unrelated workload, npm policy, or Node version was
+changed.
+
+### Native build and load
+
+Rebuild used the Visual Studio x64 developer environment and Electron target
+`44.9.0`. `prebuild-install` could not resolve Electron 44 ABI metadata and
+fell back to `node-gyp`; node-gyp then compiled successfully with exit code
+`0`. Generated artifact:
+
+```text
+node_modules\better-sqlite3\build\Release\better_sqlite3.node
+```
+
+`dumpbin` reports x64 machine `8664`. Electron package installer restored
+`node_modules\electron\dist\electron.exe`; `electron --version` reports
+`v44.9.0`. Controlled Electron execution loaded better-sqlite3 with runtime
+ABI `149` and executed `select 1`, returning `1`. This proves Electron ABI
+load, not only ordinary Node load.
+
+### Test and runtime results
+
+| Check | Result | Status |
+|---|---|---|
+| Real SQLite suite under Electron 44 | 5/5 passed | **PASS** |
+| Deterministic contract suite under Electron 44 | 9/9 passed | **PASS** |
+| `npm test` under Node 24 | 9/14 passed; 5 fail with expected ABI 149 vs Node ABI 137 error | **FAIL**; script still uses Node and cannot load Electron-targeted binding |
+| `npm exec tsc -- --noEmit` | Exit 0 | **PASS** |
+| `npm run build` | Exit 0 | **PASS** |
+| `npm audit --json` | 0 vulnerabilities | **PASS** audit snapshot |
+| Startup and database initialization | Status IPC returned `ready` / `connected` | **PASS** |
+| Preload API | `window.orchestrator` is `object` | **PASS** |
+| Renderer Node isolation | `typeof process` and `typeof require` are `undefined` | **PASS** |
+| CSP | Required restrictive policy present | **PASS** |
+| Malformed task IPC | Returned `INVALID_INPUT` / `Invalid task payload` | **PASS** |
+| New-window restriction | `window.open('about:blank') === null` | **PASS** |
+| Unauthorized IPC sender | No independent sender-forgery probe | **UNVERIFIED** |
+| Navigation restriction | Main-process `will-navigate` and `will-frame-navigate` guards added; CDP navigation probes bypassed or did not demonstrate blocking | **UNVERIFIED** |
+| Bounded shutdown | Specific PIDs from test sessions cleaned | **PASS** |
+
+P0.7 recovered native runtime and validated real persistence under Electron 44.
+`npm test` remains a failing Node-oriented command because the binding must
+target Electron ABI 149. A future test-runner change needs separate approval
+and should run both suites under Electron with a bounded exit mechanism; this
+stage did not silently rewrite that command.
+
+Commercial readiness remains **BLOCKED**. Recovery, cancellation,
+process-termination, packaging, clean-machine installation, adapter/provider
+qualification, independent review, and release authorization remain open.
+
 ## Prioritized remediation plan
 
 1. **P0 — Establish deterministic proof.** Authorize and add TypeScript

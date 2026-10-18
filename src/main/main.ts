@@ -68,6 +68,12 @@ function createWindow(): BrowserWindow {
     }
   });
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  window.webContents.on("will-navigate", (event) => {
+    event.preventDefault();
+  });
+  window.webContents.on("will-frame-navigate", (event) => {
+    event.preventDefault();
+  });
   void window.loadFile(path.join(__dirname, "../renderer/index.html")).catch((error: unknown) => {
     console.error("Renderer load failed", error);
   });
