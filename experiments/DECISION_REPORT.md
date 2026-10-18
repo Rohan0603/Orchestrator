@@ -1,6 +1,6 @@
 # Experiment decision report
 
-Audit date: 2026-10-18. Audited implementation commit: `0fb0070`.
+Audit date: 2026-10-18. Current evidence commit: `048c2a1`.
 
 ## Current result
 

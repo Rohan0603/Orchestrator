@@ -1,6 +1,7 @@
 # Final MVP completion audit
 
-Audit date: 2026-10-18. Audited commit: `0fb0070`. Audit is self-review in
+Audit date: 2026-10-18. Historical audit commit: `0fb0070`. Current evidence
+through `048c2a1` is recorded in the addendum. Audit is self-review in
 single-agent mode, not independent review.
 
 ## Verdict

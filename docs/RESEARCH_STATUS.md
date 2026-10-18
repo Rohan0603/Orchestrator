@@ -1,6 +1,6 @@
 # Research status
 
-Audit date: 2026-10-18. Audited implementation commit: `0fb0070`.
+Audit date: 2026-10-18. Audited implementation commit: `048c2a1`.
 
 ## Current evidence
 
@@ -11,7 +11,8 @@ blocked acceptance decision when independent review is unavailable.
 
 ## Blocked or unvalidated
 
-- No live harness/provider adapter is qualified.
+- OpenCode CLI JSON is provisionally qualified; SDK/server and ACP remain
+  unqualified.
 - Windows process ownership and verified cancellation are not qualified.
 - Independent review execution and repair comparison are unavailable.
 - Backup/restore, clean-machine installation, packaging, and commercial
@@ -19,8 +20,8 @@ blocked acceptance decision when independent review is unavailable.
 - Nondeterministic task economics and protocol comparisons are not measured.
 - Windows packaging command passed, but clean-machine launch, signing, and
   Application Control compatibility are not validated.
-- Experiment raw-record and summary runners are executable; no live trials are
-  created by them without qualified prerequisites.
+- Experiment raw-record and summary runners are executable; three live durable
+  CLI JSON trials are retained under `experiments/results/real-opencode-durable/`.
 
 Do not convert this status into a release recommendation. See
 `COMMERCIAL_READINESS.md` for gate tracking.

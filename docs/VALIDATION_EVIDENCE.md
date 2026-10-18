@@ -1,9 +1,9 @@
 # Validation evidence
 
-Audit date: 2026-10-18. Audited implementation commit: `0fb0070`.
-Working tree was clean before audit changes.
+Audit date: 2026-10-18. Historical deterministic audit commit: `0fb0070`.
+Current implementation/evidence commits: `5f2f132`, `f1958a2`, `048c2a1`.
 
-Environment:
+Environment for current validation:
 
 - Windows repository checkout, branch `master`
 - Node `v24.19.0`, npm `12.0.2`

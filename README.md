@@ -13,10 +13,12 @@ Stage 1 foundation establishes:
 - Typed task domain models and fail-closed lifecycle transition helpers.
 - Main-process task creation/listing and application status operations.
 
-Worker dispatch, Git mutation, live harness/provider integration,
-independent review execution, repair loops, cancellation exercises, and
-qualification remain unimplemented. Minimal restart reconciliation and local
-Windows packaging are implemented but not release-qualified.
+Fixture worker dispatch and one live OpenCode CLI JSON route are implemented.
+The live route is provisionally qualified only through the durable experiment
+runners; UI dispatch still uses the deterministic fixture adapter. Git mutation
+through the production UI, independent review execution, repair loops, and
+cancellation exercises remain unqualified. Minimal restart reconciliation and
+local Windows packaging are implemented but not release-qualified.
 
 Stage 2 adds source-level policy decisions, risk classification, one-shot
 exact-context approval contracts, and workspace/Git safety contracts. These
@@ -69,16 +71,16 @@ The orchestrator owns policy, approval, route selection, deadlines,
 cancellation, recovery, verification, review, and acceptance.
 
 `src/harness/conformance.ts` records the qualification checks and required
-evidence. Deterministic fixture checks cover contract behavior, but all live
-adapter checks remain `blocked`; no real adapter has passed conformance.
-OpenCode `1.19.0` is present on this machine, but no provider configuration,
-credentials, or live integration has been inspected or qualified. OpenCode
-remains the initial candidate. ACP, OpenCode server/API, and CLI alternatives
-remain comparison candidates only.
+evidence. Deterministic fixture checks cover contract behavior. OpenCode
+`1.19.0` CLI JSON is provisionally qualified through
+`src/harness/opencode-cli-adapter.ts` and three durable trials using
+`opencode/mimo-v2.6-flash-free`. ACP and OpenCode server/API remain
+unqualified. Provider credentials are never written to repository evidence.
 
-Eventually, real adapter facts must persist with run/attempt identity, route
-identity, progress and terminal events, cancellation/reconciliation state,
-and artifact/evidence provenance. No real adapter is connected.
+Qualified CLI adapter facts are retained in trial records with run/attempt
+identity, route identity, progress and terminal events, usage telemetry when
+reported, and artifact/evidence provenance. The route is exercised through
+explicit experiment runners, not silently wired into renderer task execution.
 
 `src/execution/local-execution.ts` now connects policy, route eligibility,
 durable run/attempt state, dispatch intent, fixture-adapter progress, terminal
@@ -161,8 +163,18 @@ compatible Windows SDK.
 x64 Electron package under `out/` using project-local Electron Packager.
 The package includes the Electron-ABI-149 native SQLite binding. This is an
 unmanaged application directory, not an installer or signed release.
-Clean-machine installation, process cancellation qualification, adapter
-qualification, and independent review remain unverified or blocked.
+Clean-machine installation, process cancellation qualification, independent
+review, and production UI wiring for the live adapter remain unverified or
+blocked. The live CLI route is exercised only with the explicit runner:
+
+```text
+npm run build
+node experiments/runners/run-opencode-cli.mjs --fixture <git-dir> --model opencode/mimo-v2.6-flash-free --output <new-json> --source-revision <commit>
+```
+
+For SQLite-authoritative durable qualification, use the Electron test harness
+and environment variables documented in
+[experiments/runners/README.md](experiments/runners/README.md).
 
 ## Research artifacts
 
@@ -175,8 +187,9 @@ qualification, and independent review remain unverified or blocked.
 - [Experiment decision report](experiments/DECISION_REPORT.md)
 
 The experiment tree stores pinned configuration, fixture/verifier conventions,
-trial schema, and raw-result/report conventions. It does not claim live
-provider qualification; unavailable prerequisites remain blocked.
+trial schema, raw-result/report conventions, and three retained live
+OpenCode CLI JSON trial records. It does not claim general provider
+reliability; unavailable prerequisites remain blocked.
 
 ## Commercial readiness
 
