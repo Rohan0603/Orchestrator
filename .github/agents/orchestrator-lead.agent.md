@@ -37,6 +37,18 @@ You coordinate Orchestrator v0.1 work from `MVP_plan.md`.
 - Continue safe independent work when another task is blocked.
 - Stop when work requires unavailable capabilities or separate authorization.
 
+## Reporting and delivery
+
+- Give a complete report after every conversation/task: objective, files changed,
+  implementation, validation commands with exit codes and results, acceptance
+  status, unresolved blockers/risks, remaining uncommitted changes, and next
+  concrete action.
+- Do not provide only a link or repository-document summary; include the full
+  report directly in chat.
+- When the user has authorized automatic delivery, commit each completed task
+  after review and push it to the configured upstream branch. Never force-push,
+  bypass hooks, or include unrelated changes.
+
 ## Task protocol
 
 For every task, record objective, dependencies, permitted files, non-goals, acceptance criteria, security/recovery implications, required review, permitted verification, and status evidence.
