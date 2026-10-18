@@ -1170,7 +1170,7 @@ fixture currently exposes the production preload API to those contexts.
 | Second-WebContents sender rejection before mutation | 1 real Electron integration test passed | **PASS** |
 | `data:` invalid-origin rejection before mutation | 1 real Electron integration test passed | **PASS** |
 | Malformed payload and unknown task rejection | 1 real Electron integration test passed; no task/run mutation | **PASS** |
-| Subframe adversarial IPC | Sandboxed subframes do not receive production preload API | **UNVERIFIED** |
+| Subframe adversarial IPC | Frame-enumeration fixture timed out before obtaining a stable child-frame handle; sandboxed subframes do not receive production preload API | **UNVERIFIED** |
 | Windows Job Object ownership and descendant termination | No supported project-local API/binding | **BLOCKED** |
 | Graceful 30-second plus 5-second forced cancellation | Ownership prerequisite absent | **BLOCKED** |
 | OpenCode executable readiness | `1.19.0`; CLI available; no route invoked or config changed | **BLOCKED / NOT TESTED** |
@@ -1187,3 +1187,8 @@ process termination, signing, publication, or distribution was performed.
 The reopened-SQLite recovery test now also verifies repeated reconciliation is
 idempotent (`0` records on the second pass), one recovery audit event, one
 dispatch intent, and no automatic replay for each of three crash boundaries.
+
+Current package inspection found exactly one `better_sqlite3.node`, zero
+detected environment/database/credential artifacts, and an unsigned
+`Orchestrator.exe`. Packaged launch was not retried after the observed
+Application Control block.
