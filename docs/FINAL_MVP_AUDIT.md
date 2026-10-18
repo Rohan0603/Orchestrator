@@ -60,3 +60,18 @@ explicitly excludes live claims.
 
 See [MVP_ACCEPTANCE_MATRIX](MVP_ACCEPTANCE_MATRIX.md) and
 [VALIDATION_EVIDENCE](VALIDATION_EVIDENCE.md) for requirement-level evidence.
+
+## Real-worker qualification addendum
+
+Updated at implementation commit `f1958a2` after adapter commit `5f2f132`.
+OpenCode `1.19.0` CLI JSON is now implemented and exercised with free route
+`opencode/mimo-v2.6-flash-free` against three disposable Git fixtures
+(`experiments/results/real-opencode-durable/`). Each trial persisted dispatch
+intent before invocation, changed `value.txt`, captured a diff, and passed
+`verify.ps1`. Trial r7 retained provider telemetry: total 18100, input 100,
+output 46, reasoning 34, cost 0.
+
+CLI JSON baseline is **provisionally supported**, not fully accepted. SDK/server
+and ACP remain untested. Independent review remains unavailable, so all three
+acceptance decisions are explicitly blocked. Windows process ownership and
+cancellation remain blocked; no unsafe termination workaround was used.

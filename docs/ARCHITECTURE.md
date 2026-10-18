@@ -26,7 +26,8 @@ bounded repair or acceptance/rejection. Unknown or ambiguous outcomes enter
 ## Current implementation boundary
 
 The deterministic fixture adapter exercises lifecycle and persistence behavior.
-No live provider adapter is qualified. Real Windows process ownership,
+OpenCode CLI JSON is provisionally qualified as one live provider route.
+Real Windows process ownership,
 cancellation, independent review execution, and commercial packaging remain
 separate qualification work. Missing mandatory capability or identity blocks
 dispatch.

@@ -9,7 +9,7 @@ Audit date: 2026-10-18. Audited implementation commit: `0fb0070`.
 | MVP-03 | Policy and exact approvals | deterministic and SQLite tests | Invalid, prohibited, missing-capability, expiry, context mismatch, one-shot consumption cases pass | `tests/deterministic.test.ts`, `tests/sqlite-runtime.test.ts` | PASS | No live side-effect trial |
 | MVP-04 | Durable dispatch and evidence provenance | execution/SQLite tests | Intent precedes adapter call; duplicate progress rejected; evidence persisted; missing capability blocks dispatch | `tests/execution.test.ts`, `src/dispatch/` | PASS | No real provider route |
 | MVP-05 | Orchestrator-owned acceptance | acceptance/execution tests | Worker success stops at verification; persisted acceptance is blocked without independent review | `src/acceptance/acceptance.ts`, `experiments/results/deterministic-qualification-2026-10-18.json` | PASS | Independent review required for acceptance |
-| MVP-06 | Real worker adapter qualification | live adapter conformance | No provider adapter executed or qualified | `docs/DECISION_REGISTER.md` | BLOCKED | Qualified executable, route identity, provider config, and capability evidence |
+| MVP-06 | Real worker adapter qualification | OpenCode 1.19.0 CLI JSON, three durable trials | CLI JSON route executed with `opencode/mimo-v2.6-flash-free`; dispatch, real diff, verifier, and route identity persisted | `experiments/results/real-opencode-durable/`, `src/harness/opencode-cli-adapter.ts` | PROVISIONAL | SDK/server and ACP unresolved; keep route-specific qualification |
 | MVP-07 | Windows ownership and verified cancellation | supported Job Object/process exercise | Not implemented or verified; no PID heuristic substituted | `docs/COMMERCIAL_PRODUCT_HANDOFF.md` | BLOCKED | Supported maintained binding plus owned-process fault tests |
 | MVP-08 | Restart, crash, and uncertain recovery | deterministic crash-boundary tests | Persisted uncertainty blocks replay; restart reconciliation passes for fixture/database paths | `tests/execution.test.ts`, `tests/sqlite-runtime.test.ts` | PASS | Real worker/process recovery remains blocked |
 | MVP-09 | Independent review and bounded repair | independent gold set and repair trials | No independent reviewer or repair campaign available | `docs/RESEARCH_STATUS.md` | BLOCKED | Genuine independent evaluator and frozen evaluation set |
@@ -22,6 +22,6 @@ Audit date: 2026-10-18. Audited implementation commit: `0fb0070`.
 ## Overall
 
 Mandatory research-MVP evidence is incomplete. Verdict: **INCOMPLETE /
-BLOCKED**. Deterministic foundation is validated; live worker, ownership,
-independent review, protocol comparison, and nondeterministic economics are
-not.
+BLOCKED**. Deterministic foundation and one real CLI JSON worker route are validated;
+ownership/cancellation, independent review, protocol comparison, and
+commercial acceptance are not.

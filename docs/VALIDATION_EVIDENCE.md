@@ -29,8 +29,23 @@ signing, Application Control compatibility, or production worker behavior.
 Executed facts:
 
 - Electron application code ran during the real IPC integration test.
-- No real OpenCode/provider worker executed.
+- Earlier audit commands did not invoke a real worker; the later real-worker
+  evidence is recorded below.
 - No Windows process ownership or cancellation was verified.
 - No genuinely independent review occurred.
 - No task reached genuine acceptance; fixture success persisted a blocked
   acceptance decision because independent review was unavailable.
+
+## Real-worker qualification evidence
+
+Validated at commits `5f2f132` (adapter) and `f1958a2` (usage retention):
+
+| Trial set | Route | Result | Evidence |
+|---|---|---|---|
+| r5, r6, r7 | OpenCode `1.19.0` CLI JSON / `opencode/mimo-v2.6-flash-free` | Three durable executions changed `value.txt`; verifier passed; acceptance blocked | `experiments/results/real-opencode-durable/` |
+
+Each trial used a disposable versioned Git fixture. SQLite dispatch intent
+preceded worker invocation; progress and orchestrator-verified diff evidence
+were persisted. r7 recorded usage `{total:18100,input:100,output:46,reasoning:34,cost:0}`.
+No trial claims independent review or cancellation. CLI JSON is provisionally
+supported; SDK/server and ACP remain unresolved.

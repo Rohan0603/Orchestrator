@@ -1,0 +1,73 @@
+{
+  "schemaVersion": "trial-result-v1",
+  "experimentId": "real-opencode-durable",
+  "status": "blocked",
+  "trialId": "durable-1792330235791",
+  "sourceRevision": "5f2f132",
+  "model": "opencode/mimo-v2.6-flash-free",
+  "dispatch": {
+    "intentPersistedBeforeWorker": true,
+    "dispatch_id": "10c7293d-b674-4728-9060-7bd5b2d14eb4",
+    "run_id": "3a070797-7193-45f0-9784-0069874fc7c3",
+    "attempt_id": "6f03df87-cc4c-4140-aa0d-751b9927afb7"
+  },
+  "execution": {
+    "run": {
+      "id": "3a070797-7193-45f0-9784-0069874fc7c3",
+      "taskId": "f6b51186-1bf5-416e-b3a0-e1cc14042f20",
+      "state": "created",
+      "routeId": "opencode-cli:opencode/mimo-v2.6-flash-free",
+      "recoveryState": "none",
+      "createdAt": "2026-10-18T13:29:35.171Z"
+    },
+    "attemptId": "6f03df87-cc4c-4140-aa0d-751b9927afb7",
+    "policy": {
+      "id": "65d70562-189d-4744-9ba9-fcf03435a86b",
+      "policyVersion": "policy-v1",
+      "decision": "allowed",
+      "reasonCode": "POLICY_ALLOWED",
+      "reason": "Action allowed by policy",
+      "action": {
+        "operation": "run-worker",
+        "context": {
+          "operation": "run-worker",
+          "target": "[disposable-fixture]",
+          "arguments": [],
+          "payload": null
+        },
+        "riskTier": 1,
+        "prohibited": false,
+        "capabilityVerified": true,
+        "evidenceComplete": true,
+        "prerequisitesResolved": true
+      },
+      "actionDigest": "4351e2050c6649bb1ab4cb08eb79264a8c1a97f231affe5b199dd63a77f4026a",
+      "evaluatedAt": "2026-10-18T13:29:35.177Z"
+    },
+    "status": "verification",
+    "accepted": false,
+    "progressAccepted": 23,
+    "progressRejected": 0,
+    "acceptance": {
+      "decision": "blocked",
+      "reason": "Independent review is unavailable"
+    }
+  },
+  "verifier": {
+    "status": "passed",
+    "output": "verified"
+  },
+  "diffSha256": "14f2f182a686bb3d3898755b8e6b8a4d6b2f53c527724dce1fa41b37f6a1868c",
+  "review": {
+    "status": "blocked",
+    "reason": "No independent reviewer configured"
+  },
+  "acceptance": {
+    "status": "blocked",
+    "reason": "Independent review is unavailable"
+  },
+  "cancellation": {
+    "status": "blocked",
+    "reason": "Windows process ownership is unverified"
+  }
+}

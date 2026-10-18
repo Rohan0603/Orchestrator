@@ -1,0 +1,80 @@
+{
+  "schemaVersion": "trial-result-v1",
+  "experimentId": "real-opencode-durable",
+  "status": "blocked",
+  "trialId": "durable-1792330457529",
+  "sourceRevision": "f1958a2",
+  "model": "opencode/mimo-v2.6-flash-free",
+  "dispatch": {
+    "intentPersistedBeforeWorker": true,
+    "dispatch_id": "1a591626-c003-46b3-9d17-df90993658f8",
+    "run_id": "c924c588-3331-46ea-92a9-b7724b30f80a",
+    "attempt_id": "09eddcfb-57f4-4daf-9674-3f2f98b8fe28"
+  },
+  "execution": {
+    "run": {
+      "id": "c924c588-3331-46ea-92a9-b7724b30f80a",
+      "taskId": "854c4355-37ca-453c-97d5-0878dd0f8fc4",
+      "state": "created",
+      "routeId": "opencode-cli:opencode/mimo-v2.6-flash-free",
+      "recoveryState": "none",
+      "createdAt": "2026-10-18T13:33:20.260Z"
+    },
+    "attemptId": "09eddcfb-57f4-4daf-9674-3f2f98b8fe28",
+    "policy": {
+      "id": "d2aa3281-e7c0-4c1f-9fde-a9453588f6b6",
+      "policyVersion": "policy-v1",
+      "decision": "allowed",
+      "reasonCode": "POLICY_ALLOWED",
+      "reason": "Action allowed by policy",
+      "action": {
+        "operation": "run-worker",
+        "context": {
+          "operation": "run-worker",
+          "target": "[disposable-fixture]",
+          "arguments": [],
+          "payload": null
+        },
+        "riskTier": 1,
+        "prohibited": false,
+        "capabilityVerified": true,
+        "evidenceComplete": true,
+        "prerequisitesResolved": true
+      },
+      "actionDigest": "820c5b34f031460e612353383ae0cf0542deddb02f91e8a4bb63b74e00f5ce56",
+      "evaluatedAt": "2026-10-18T13:33:20.268Z"
+    },
+    "status": "verification",
+    "accepted": false,
+    "progressAccepted": 19,
+    "progressRejected": 0,
+    "acceptance": {
+      "decision": "blocked",
+      "reason": "Independent review is unavailable"
+    }
+  },
+  "usage": {
+    "total": 18100,
+    "input": 100,
+    "output": 46,
+    "reasoning": 34,
+    "cost": 0
+  },
+  "verifier": {
+    "status": "passed",
+    "output": "verified"
+  },
+  "diffSha256": "14f2f182a686bb3d3898755b8e6b8a4d6b2f53c527724dce1fa41b37f6a1868c",
+  "review": {
+    "status": "blocked",
+    "reason": "No independent reviewer configured"
+  },
+  "acceptance": {
+    "status": "blocked",
+    "reason": "Independent review is unavailable"
+  },
+  "cancellation": {
+    "status": "blocked",
+    "reason": "Windows process ownership is unverified"
+  }
+}

@@ -4,10 +4,9 @@ Audit date: 2026-10-18. Audited implementation commit: `0fb0070`.
 
 ## Evidence inventory
 
-One deterministic qualification record exists. It covers the local fixture
-path and records 26 passing deterministic tests, but its task acceptance is
-blocked because independent review is unavailable. No live provider trials
-exist.
+The deterministic qualification record covers 26 passing tests. Three live
+OpenCode CLI JSON trials are retained below; their task acceptance remains
+blocked because independent review is unavailable.
 
 ## Hypothesis outcomes
 
@@ -31,3 +30,17 @@ The deterministic foundation is credible for its tested fixture boundary.
 Research MVP completion, commercial architecture selection, and universal
 performance claims are not supported. Next decision-changing evidence is a
 qualified real adapter followed by pinned baseline and comparison trials.
+
+## Real-worker addendum
+
+Three durable trials now qualify one baseline route:
+OpenCode `1.19.0` CLI JSON with `opencode/mimo-v2.6-flash-free`. All three
+persisted dispatch intent, executed real worker code, changed the fixture,
+captured diff evidence, and passed the deterministic verifier. Acceptance was
+blocked in every trial because no independent reviewer was configured. Trial
+r7 records usage telemetry and cost `0` as provider-reported, not universal
+zero cost.
+
+Updated conclusion: CLI JSON is **provisionally supported**. SDK/server and ACP
+remain unresolved; cancellation/process ownership and independent review keep
+the research MVP **INCOMPLETE / BLOCKED**.

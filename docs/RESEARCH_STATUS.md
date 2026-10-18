@@ -24,3 +24,15 @@ blocked acceptance decision when independent review is unavailable.
 
 Do not convert this status into a release recommendation. See
 `COMMERCIAL_READINESS.md` for gate tracking.
+
+## Real-worker update
+
+OpenCode `1.19.0` CLI JSON route is provisionally supported through
+`opencode-cli-json` and free model `opencode/mimo-v2.6-flash-free`. Three
+independent durable trials completed on disposable Git fixtures. All persisted
+dispatch intent, real file changes, diff evidence, verifier output, and blocked
+acceptance. Trial r7 also records usage telemetry.
+
+This does not clear research-MVP completion. SDK/server and ACP are unresolved;
+process ownership/cancellation and independent review remain blocked. Overall
+status stays **INCOMPLETE / BLOCKED**.

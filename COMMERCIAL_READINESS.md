@@ -80,7 +80,7 @@ and [validation evidence](docs/VALIDATION_EVIDENCE.md).
 | CR-03 | Electron security and IPC boundary / Critical | Startup inspection, IPC sender/payload tests, renderer privilege tests, CSP review | Renderer remains sandboxed, isolated, Node-disabled, and narrow-API only | Static source review confirms flags/CSP/sender and payload guards; runtime checks not run | P0-C record below | implemented-not-validated | `7edc5d2` / `0.1.0` | Run security-focused validation; preserve main-process ownership |
 | CR-04 | Policy, risk, exact approval / Critical | Deterministic unit/integration cases for decisions, expiry, context changes, one-shot consumption, persistence failure | Fail closed; no mismatched, expired, consumed, or prohibited action proceeds | Pure policy/approval cases pass; persistence-error and transactional consumption tests blocked by native SQLite readiness | P0.2 record below | implemented-not-validated | `ad8e663` / `0.1.0` | Run SQLite-backed transaction and failure tests after native readiness |
 | CR-05 | Dispatch idempotency and evidence provenance / Critical | Deterministic dispatch/event/evidence cases plus persistence failure cases | Duplicate or uncertain dispatch is blocked; invalid evidence cannot satisfy acceptance | Pure route/progress/evidence cases pass; durable idempotency and cursor tests blocked by native SQLite readiness | P0.2 record below | implemented-not-validated | `ad8e663` / `0.1.0` | Run SQLite-backed dispatch and evidence tests after native readiness |
-| CR-06 | Harness capability and route identity / Critical | Authorized adapter conformance trials against every mandatory capability | Mandatory gaps block; provider/model identity and fallback are explicit | No adapter integrated or exercised | None | blocked | `7edc5d2` / `0.1.0` | Qualify candidate only after conformance evidence |
+| CR-06 | Harness capability and route identity / Critical | Authorized adapter conformance trials against every mandatory capability | Mandatory gaps block; provider/model identity and fallback are explicit | OpenCode CLI JSON provisionally qualified; SDK/server and ACP unresolved | `experiments/results/real-opencode-durable/` | blocked | `f1958a2` / `0.1.0` | Keep release blocked until ownership/cancellation and independent review gates clear |
 | CR-07 | Cancellation, deadlines, restart, recovery / Critical | Authorized fault, process-ownership, restart, timeout, disk/persistence failure exercises | Unknown state remains recovery-required; unsafe redispatch is prevented | Not implemented/validated end-to-end | None | blocked | `7edc5d2` / `0.1.0` | Implement remaining lifecycle/recovery behavior, then exercise |
 | CR-08 | Dependency, licensing, packaging, installation / High | `npm ls`; `npm audit --json`; package license metadata; native artifact inspection; clean Windows install | Dependencies acceptable; install/startup reproducible; no unsafe scripts/config | MIT/Apache direct licenses recorded; 2 high and 4 moderate vulnerabilities; Electron and SQLite native binaries absent; packaging not run | P0-D record below | blocked | `7edc5d2` / `0.1.0` | Do not upgrade/remediate without authorization; resolve native install and audit gates |
 | CR-09 | Regression and release qualification / High | Repeatable deterministic suite, release checklist, clean-machine rerun | Required suite passes at pinned commit; failures retained and triaged | Nine pure deterministic tests pass; clean-machine, runtime, packaging, and release qualification remain unvalidated | P0.2 record below | implemented-not-validated | `ad8e663` / `0.1.0` | Expand after native readiness; run clean-machine release qualification |
@@ -1131,7 +1131,7 @@ qualification, clean-machine installation, signing, and independent review.
 OpenCode `1.19.0` is detectable on the development machine. No provider
 configuration, credentials, live invocation, identity, telemetry, cancellation,
 or restart behavior was inspected or qualified. Its presence does not change
-the real-worker status: **NOT TESTED/BLOCKED**.
+the historical real-worker status at that audit point: **NOT TESTED/BLOCKED**.
 
 ## Prioritized remediation plan
 
@@ -1259,3 +1259,16 @@ Application Control block.
 - Node.js, [child_process](https://nodejs.org/api/child_process.html):
   documents process spawning, but not Windows Job Object ownership or
   descendant termination semantics.
+
+## Real-worker qualification update
+
+Commits `5f2f132` and `f1958a2` add and exercise `opencode-cli-json` for
+OpenCode `1.19.0` using free model `opencode/mimo-v2.6-flash-free`. Three
+durable trials prove dispatch intent, real file changes, diff capture,
+deterministic verification, and explicit blocked acceptance. CLI JSON is
+provisionally supported. SDK/server and ACP remain unresolved.
+
+This evidence does not clear commercial gates: Windows process ownership and
+cancellation are blocked, independent review is unavailable, and clean-machine,
+backup/restore, signing, and Application Control validation remain pending.
+Release recommendation remains **do not publish**.
