@@ -9,6 +9,7 @@ import { DispatchRepository } from "../src/persistence/dispatch-repository";
 import { openDatabase, PersistenceError } from "../src/persistence/database";
 import { applyMigrations } from "../src/persistence/migrations";
 import { PolicyRepository } from "../src/persistence/policy-repository";
+import { RunRepository } from "../src/persistence/run-repository";
 import { TaskRepository } from "../src/persistence/task-repository";
 import { createApprovalRequest, evaluatePolicy } from "../src/policy/policy";
 
@@ -216,6 +217,81 @@ test("repositories persist task, approval, dispatch, progress, and evidence stat
     assert.equal(
       scalar<{ count: number }>(database, "SELECT count(*) AS count FROM evidence_records").count,
       1
+    );
+  });
+});
+
+test("run creation persists intent and restart reconciliation fails closed", () => {
+  const directory = mkdtempSync(join(tmpdir(), "orchestrator-recovery-"));
+  const path = join(directory, "recovery.db");
+  let database = openDatabase(path);
+  try {
+    const task = new TaskRepository(database).create({
+      title: "Recover task",
+      description: "Recover interrupted run",
+      acceptanceCriteria: ["reconcile safely"],
+      riskTier: 1
+    });
+    const runs = new RunRepository(database);
+    const created = runs.createRun(task.id, "local-opencode", "2026-01-01T00:00:00.000Z");
+    database
+      .prepare("UPDATE runs SET state = 'running' WHERE id = ?")
+      .run(created.run.id);
+    database.close();
+
+    database = openDatabase(path);
+    const reconciled = new RunRepository(database).reconcileInterruptedRuns(
+      "2026-01-01T00:01:00.000Z"
+    );
+    assert.equal(reconciled.length, 1);
+    assert.equal(reconciled[0].state, "recovery_required");
+    assert.equal(reconciled[0].recoveryState, "recovery_required");
+    assert.equal(
+      scalar<{ outcome: string }>(
+        database,
+        "SELECT outcome FROM attempts WHERE id = ?",
+        created.attempt.id
+      ).outcome,
+      "disconnected"
+    );
+    assert.equal(
+      scalar<{ state: string }>(
+        database,
+        "SELECT state FROM recovery WHERE run_id = ?",
+        created.run.id
+      ).state,
+      "recovery_required"
+    );
+    assert.equal(
+      new RunRepository(database).reconcileInterruptedRuns("2026-01-01T00:02:00.000Z").length,
+      0
+    );
+    assert.equal(
+      scalar<{ count: number }>(
+        database,
+        "SELECT count(*) AS count FROM audit_events WHERE event_type = 'run.recovery_required'"
+      ).count,
+      1
+    );
+  } finally {
+    if (database.open) database.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("run creation rolls back when task foreign key is invalid", () => {
+  withDatabase((database) => {
+    assert.throws(
+      () => new RunRepository(database).createRun("missing-task", null),
+      (error: unknown) => error instanceof PersistenceError
+    );
+    assert.equal(
+      scalar<{ count: number }>(database, "SELECT count(*) AS count FROM runs").count,
+      0
+    );
+    assert.equal(
+      scalar<{ count: number }>(database, "SELECT count(*) AS count FROM attempts").count,
+      0
     );
   });
 });
