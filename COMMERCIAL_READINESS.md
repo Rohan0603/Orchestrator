@@ -9,10 +9,10 @@ commits into runtime proof.
 | Field | Value |
 |---|---|
 | Product version | `0.1.0` |
-| Validation baseline commit | `df9d3b0637b52195c73f3198243a86887902a3c2` |
+| Validation baseline commit | `7edc5d251d2022e202f748e83d7818057c7a10b7` |
 | Branch | `master` |
-| Remote publication | Not performed by this session |
-| Validation execution authorization | Not granted for this session |
+| Remote publication | `origin/master` points to validation baseline |
+| Validation execution authorization | Granted for P0 local checks |
 | Independent review | Blocked by permanent single-agent rule |
 | Current release recommendation | Do not publish |
 
@@ -26,17 +26,41 @@ does not.
 
 | ID | Requirement / risk | Method | Expected result | Actual result | Evidence | Status | Commit / version | Defects or remediation |
 |---|---|---|---|---|---|---|---|---|
-| CR-01 | Type safety, build reproducibility / High | Clean-machine dependency install and deterministic production build | Build succeeds from lockfile with documented tool versions | Not run | None | blocked | `df9d3b0` / `0.1.0` | Authorize build; add reproducible build evidence |
-| CR-02 | SQLite migrations, transactions, rollback / Critical | Fresh and upgraded database migration tests; injected persistence failures | Versions advance atomically; failures roll back; no success-shaped fallback | Not run | None | blocked | `df9d3b0` / `0.1.0` | Authorize SQLite runtime and failure exercises |
-| CR-03 | Electron security and IPC boundary / Critical | Startup inspection, IPC sender/payload tests, renderer privilege tests, CSP review | Renderer remains sandboxed, isolated, Node-disabled, and narrow-API only | Source flags exist; runtime checks not run | None | implemented-not-validated | `df9d3b0` / `0.1.0` | Run security-focused validation; preserve main-process ownership |
-| CR-04 | Policy, risk, exact approval / Critical | Deterministic unit/integration cases for decisions, expiry, context changes, one-shot consumption, persistence failure | Fail closed; no mismatched, expired, consumed, or prohibited action proceeds | Source contracts exist; tests not run | None | implemented-not-validated | `df9d3b0` / `0.1.0` | Add focused tests and durable transaction evidence |
-| CR-05 | Dispatch idempotency and evidence provenance / Critical | Deterministic dispatch/event/evidence cases plus persistence failure cases | Duplicate or uncertain dispatch is blocked; invalid evidence cannot satisfy acceptance | Source contracts exist; tests not run | None | implemented-not-validated | `df9d3b0` / `0.1.0` | Add tests; verify schema and cursor behavior at runtime |
-| CR-06 | Harness capability and route identity / Critical | Authorized adapter conformance trials against every mandatory capability | Mandatory gaps block; provider/model identity and fallback are explicit | No adapter integrated or exercised | None | blocked | `df9d3b0` / `0.1.0` | Qualify candidate only after conformance evidence |
-| CR-07 | Cancellation, deadlines, restart, recovery / Critical | Authorized fault, process-ownership, restart, timeout, disk/persistence failure exercises | Unknown state remains recovery-required; unsafe redispatch is prevented | Not implemented/validated end-to-end | None | blocked | `df9d3b0` / `0.1.0` | Implement remaining lifecycle/recovery behavior, then exercise |
-| CR-08 | Dependency, licensing, packaging, installation / High | Vulnerability/license inventory; clean Windows install; package smoke test | Dependencies acceptable; install/startup reproducible; no unsafe scripts/config | npm previously reported 4 moderate and 2 high audit findings; packaging not run | npm install report only | blocked | `df9d3b0` / `0.1.0` | Separate authorization for audit remediation and packaging |
-| CR-09 | Regression and release qualification / High | Repeatable deterministic suite, release checklist, clean-machine rerun | Required suite passes at pinned commit; failures retained and triaged | No test suite exists or ran | None | blocked | `df9d3b0` / `0.1.0` | Build test harness and qualification protocol |
-| CR-10 | Independent review and acceptance / Critical | Authorized independent human/reviewer evaluation against frozen criteria | Tier 2/3 review is independent; acceptance never derives from worker claim | AI-assisted source review only; independent review unavailable | Commit/source review only | blocked | `df9d3b0` / `0.1.0` | Obtain authorized independent review mechanism; do not waive |
-| CR-11 | Nondeterministic behavior / High | Three independent trials initially; expand to 5–10+ when variability/risk warrants | Inputs, configuration, traces, reset steps, and outcome variance retained | No trials run | None | blocked | `df9d3b0` / `0.1.0` | Define experiment protocol after deterministic gates |
+| CR-01 | Type safety, build reproducibility / High | `npm exec tsc -- --noEmit`; `npm run build`; clean-machine install remains separate | Typecheck/build succeed; clean-machine reproduction succeeds | Typecheck and local production build passed; clean-machine install not run | P0-A record below | implemented-not-validated | `7edc5d2` / `0.1.0` | Run clean-machine reproduction under separate authorization |
+| CR-02 | SQLite migrations, transactions, rollback / Critical | Fresh and upgraded database migration tests; injected persistence failures | Versions advance atomically; failures roll back; no success-shaped fallback | Runtime migration/rollback tests not run; source review only | P0-B record below | blocked | `7edc5d2` / `0.1.0` | Authorize SQLite runtime and failure exercises |
+| CR-03 | Electron security and IPC boundary / Critical | Startup inspection, IPC sender/payload tests, renderer privilege tests, CSP review | Renderer remains sandboxed, isolated, Node-disabled, and narrow-API only | Static source review confirms flags/CSP/sender and payload guards; runtime checks not run | P0-C record below | implemented-not-validated | `7edc5d2` / `0.1.0` | Run security-focused validation; preserve main-process ownership |
+| CR-04 | Policy, risk, exact approval / Critical | Deterministic unit/integration cases for decisions, expiry, context changes, one-shot consumption, persistence failure | Fail closed; no mismatched, expired, consumed, or prohibited action proceeds | Source contracts exist; tests not run | None | implemented-not-validated | `7edc5d2` / `0.1.0` | Add focused tests and durable transaction evidence |
+| CR-05 | Dispatch idempotency and evidence provenance / Critical | Deterministic dispatch/event/evidence cases plus persistence failure cases | Duplicate or uncertain dispatch is blocked; invalid evidence cannot satisfy acceptance | Source contracts exist; tests not run | None | implemented-not-validated | `7edc5d2` / `0.1.0` | Add tests; verify schema and cursor behavior at runtime |
+| CR-06 | Harness capability and route identity / Critical | Authorized adapter conformance trials against every mandatory capability | Mandatory gaps block; provider/model identity and fallback are explicit | No adapter integrated or exercised | None | blocked | `7edc5d2` / `0.1.0` | Qualify candidate only after conformance evidence |
+| CR-07 | Cancellation, deadlines, restart, recovery / Critical | Authorized fault, process-ownership, restart, timeout, disk/persistence failure exercises | Unknown state remains recovery-required; unsafe redispatch is prevented | Not implemented/validated end-to-end | None | blocked | `7edc5d2` / `0.1.0` | Implement remaining lifecycle/recovery behavior, then exercise |
+| CR-08 | Dependency, licensing, packaging, installation / High | `npm ls`; `npm audit --json`; package license metadata; native artifact inspection; clean Windows install | Dependencies acceptable; install/startup reproducible; no unsafe scripts/config | MIT/Apache direct licenses recorded; 2 high and 4 moderate vulnerabilities; Electron and SQLite native binaries absent; packaging not run | P0-D record below | blocked | `7edc5d2` / `0.1.0` | Do not upgrade/remediate without authorization; resolve native install and audit gates |
+| CR-09 | Regression and release qualification / High | Repeatable deterministic suite, release checklist, clean-machine rerun | Required suite passes at pinned commit; failures retained and triaged | No test suite exists; only typecheck/build ran | P0-A record below | blocked | `7edc5d2` / `0.1.0` | Build focused deterministic test harness and qualification protocol |
+| CR-10 | Independent review and acceptance / Critical | Authorized independent human/reviewer evaluation against frozen criteria | Tier 2/3 review is independent; acceptance never derives from worker claim | AI-assisted source review only; independent review unavailable | Commit/source review only | blocked | `7edc5d2` / `0.1.0` | Obtain authorized independent review mechanism; do not waive |
+| CR-11 | Nondeterministic behavior / High | Three independent trials initially; expand to 5–10+ when variability/risk warrants | Inputs, configuration, traces, reset steps, and outcome variance retained | No trials run | None | blocked | `7edc5d2` / `0.1.0` | Define experiment protocol after deterministic gates |
+
+## P0 validation record
+
+All commands below ran against commit
+`7edc5d251d2022e202f748e83d7818057c7a10b7` with a clean Git working tree.
+No application startup, provider call, SQLite open/migration exercise,
+process-termination, recovery, or destructive security test ran.
+
+| Check | Actual result | Evidence and interpretation |
+|---|---|---|
+| TypeScript check | **PASS** — `npm exec tsc -- --noEmit` exited 0 with no diagnostics | Proves compiler acceptance only; not runtime correctness |
+| Production build | **PASS** — `npm run build` exited 0 | `dist/` contained compiled main/preload/renderer/shared/Stage 4 output and copied renderer assets; build output is ignored |
+| Existing tests | **BLOCKED** — no `*.test.*` or `*.spec.*` files found | No deterministic test suite exists; no superficial tests added |
+| Resolved direct dependencies | **RECORDED** — `better-sqlite3@12.11.1`, `electron@38.8.6`, `typescript@5.9.3` | `npm ls ... --depth=0`; lockfile remains unchanged |
+| Vulnerability audit | **FAIL/BLOCKED** — 0 critical, 2 high, 4 moderate, 0 low, 0 info | `npm audit --json`; findings were inspected only, not remediated |
+| Direct package licenses | **RECORDED** — Electron MIT, better-sqlite3 MIT, TypeScript Apache-2.0 | License metadata inspected; full transitive license inventory remains outstanding |
+| Native readiness | **BLOCKED** — `node_modules/electron/dist/electron.exe` absent; better-sqlite3 `.node` binary absent | Install scripts were previously blocked; no policy bypass attempted |
+| Electron boundary review | **IMPLEMENTED-NOT-VALIDATED** — source confirms isolation, sandbox, Node disabled, CSP, sender/payload checks, denied window opening | Static review only; no Electron runtime/security qualification |
+| Persistence/dispatch review | **IMPLEMENTED-NOT-VALIDATED** — migrations, transactions, unique idempotency keys, progress ordering, explicit errors visible in source | No SQLite runtime, rollback, crash, or failure-injection exercise |
+
+P0 result: compiler/build baseline established, but product remains blocked
+for runtime, security qualification, persistence qualification, dependency
+remediation, recovery, adapter conformance, deterministic tests, and
+independent review.
 
 ## Prioritized remediation plan
 
