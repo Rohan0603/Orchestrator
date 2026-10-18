@@ -2,7 +2,7 @@
 
 Audit date: 2026-10-18. Historical deterministic audit commit: `0fb0070`.
 Current implementation/evidence commits: `5f2f132`, `f1958a2`, `048c2a1`,
-`090d53a`, `a985051`.
+`090d53a`, `a985051`, `6429b56`, `75f6909`.
 
 Environment for current validation:
 
@@ -53,7 +53,7 @@ supported; SDK/server and ACP remain unresolved.
 
 ## Current checkout validation
 
-At commit `c1fe36e` on Windows with Node `v24.19.0`, npm `12.0.2`, Electron
+At commit `75f6909` on Windows with Node `v24.19.0`, npm `12.0.2`, Electron
 `44.9.0`, and `better-sqlite3` `12.11.1`:
 
 | Command | Exit | Result |

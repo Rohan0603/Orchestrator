@@ -55,7 +55,7 @@ blocked or unverified. This pass does not change those gates.
 | Field | Value |
 |---|---|
 | Product version | `0.1.0` |
-| Validation baseline commit | `a985051` |
+| Validation baseline commit | `75f6909` |
 | Branch | `master` |
 | Remote publication | No push performed; local branch is ahead of origin |
 | Validation execution authorization | Granted for audit commands and local qualification |
