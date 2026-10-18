@@ -68,9 +68,10 @@ cancellation, and unknown reconciliation state remain non-success outcomes.
 The orchestrator owns policy, approval, route selection, deadlines,
 cancellation, recovery, verification, review, and acceptance.
 
-`src/harness/conformance.ts` records the future qualification checks and
-required evidence. All checks are currently `blocked`; no adapter has passed
-conformance. OpenCode remains the initial candidate. ACP, OpenCode server/API,
+`src/harness/conformance.ts` records the qualification checks and required
+evidence. Deterministic fixture checks cover contract behavior, but all live
+adapter checks remain `blocked`; no real adapter has passed conformance.
+OpenCode remains the initial candidate. ACP, OpenCode server/API,
 and CLI alternatives remain comparison candidates only. No provider or
 harness integration has been selected or qualified.
 

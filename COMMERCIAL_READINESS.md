@@ -907,6 +907,76 @@ clean-machine test.
 | Signed installer/distribution | **NOT RUN** |
 | Clean-machine installation | **NOT TESTED** |
 
+## P1.3-P1.6 qualification update
+
+This update started from `7afb9fd3da7613bc0ea3b846dcd7b89ccbac41ea`.
+Baseline was clean and remained Electron `44.9.0`, better-sqlite3 `12.11.1`,
+Node `v24.19.0`, Windows x64, and Electron ABI `149`.
+
+### P1.3 IPC sender security
+
+All registered privileged channels remain `app:get-status`, `tasks:list`, and
+`tasks:create`; preload exposes only `getStatus`, `listTasks`, and
+`createTask`. Production handlers compare `event.sender.id` to the primary
+window WebContents before state access or mutation. Payload validation remains
+separate from sender validation.
+
+No safe second-WebContents fixture was added. Creating one through a
+production-only privileged test API would weaken the boundary under test.
+
+| Criterion | Status |
+|---|---|
+| Valid renderer IPC and malformed-payload rejection | **PASS** prior Electron 44 runtime evidence |
+| Navigation, popup, CSP, sandbox, context isolation, disabled Node integration | **PASS** prior Electron 44 runtime evidence |
+| Unauthorized sender rejection before mutation | **UNVERIFIED** |
+
+### P1.4 Windows process ownership and cancellation
+
+Source inspection found no process-launch or cancellation implementation.
+No native Job Object binding or safe ownership adapter was introduced. PID,
+process-name, guessed-PID, and `taskkill` termination remain intentionally
+absent.
+
+| Criterion | Status |
+|---|---|
+| Verified run-owned process group/job | **BLOCKED** |
+| Graceful cancellation/escalation/exit verification | **BLOCKED** |
+| Runtime cancellation fault evidence | **NOT TESTED** |
+
+### P1.5 packaged-app validation
+
+`npm run package:win` rebuilt the unsigned Windows x64 package with Electron
+`44.9.0`. Artifact inspection found `resources/app.asar`, compiled entrypoint,
+renderer assets, migrations, and the unpacked Electron ABI `149`
+`better_sqlite3.node`. A disposable user-data startup created the SQLite
+database and completed migrations; the exact spawned package PID was then
+stopped and its temporary data removed. No `.env`, credential, database, WAL,
+test fixture, or cache files were found in the package.
+
+| Criterion | Status |
+|---|---|
+| Reproducible package build | **PASS** |
+| Packaged startup and real SQLite initialization | **PASS** |
+| Native binding and x64/Electron compatibility | **PASS** artifact/runtime evidence |
+| Unsigned status documented; signing/publishing omitted | **PASS** |
+| Isolated clean-machine installation | **NOT TESTED** |
+
+### P1.6 deterministic adapter conformance
+
+Added `ConformanceFixtureAdapter` and two Electron-backed deterministic tests.
+Fixture coverage includes known route identity, contract manifest discovery,
+duplicate idempotency rejection, missing mandatory capability fail-closed
+routing, event duplicate/out-of-order handling, success/failure/timeout/
+disconnect classification, cancellation uncertainty, and unsupported
+reconciliation.
+
+| Evidence | Result | Status |
+|---|---|---|
+| Deterministic conformance fixture tests | 2/2 passed | **PASS** |
+| Full canonical suite | 19/19 passed: 10 deterministic, 2 conformance, 7 SQLite | **PASS** |
+| Real provider/harness conformance | No live adapter or provider launched | **NOT TESTED** |
+| Capability, identity, policy, evidence, and idempotency qualification for a real adapter | Fixture-only evidence | **BLOCKED** |
+
 ## Prioritized remediation plan
 
 1. **P0 — Establish deterministic proof.** Authorize and add TypeScript
