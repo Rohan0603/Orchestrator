@@ -106,6 +106,11 @@ try {
     .prepare("SELECT dispatch_id, run_id, attempt_id FROM dispatch_intents WHERE attempt_id = ?")
     .get(result.attemptId);
   if (!dispatch) throw new Error("Durable dispatch intent missing");
+  const usage = adapter.getUsage({
+    dispatchId: dispatch.dispatch_id,
+    runId: dispatch.run_id,
+    attemptId: dispatch.attempt_id
+  });
   const evidenceUri = pathToFileURL(`${output}.diff`).toString();
   writeFileSync(`${output}.diff`, diff, { flag: "wx" });
   new DispatchRepository(database).recordEvidence({
@@ -138,6 +143,7 @@ try {
     adapter: { id: adapter.identity.adapterId, version: adapter.identity.adapterVersion, model, route },
     dispatch: { intentPersistedBeforeWorker: true, ...dispatch, counts },
     execution: result,
+    usage,
     verifier: { status: "passed", output: verifierOutput },
     diff: { sha256: createHash("sha256").update(diff).digest("hex"), path: evidenceUri },
     review: { status: "blocked", reason: "No independent reviewer configured" },

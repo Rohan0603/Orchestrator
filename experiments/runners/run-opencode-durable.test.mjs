@@ -82,6 +82,11 @@ test("real OpenCode worker completes durable dispatch path", async () => {
     }).trim();
     const dispatch = database.prepare("SELECT dispatch_id, run_id, attempt_id FROM dispatch_intents WHERE attempt_id = ?").get(result.attemptId);
     assert.ok(dispatch);
+    const usage = adapter.getUsage({
+      dispatchId: dispatch.dispatch_id,
+      runId: dispatch.run_id,
+      attemptId: dispatch.attempt_id
+    });
     writeFileSync(`${output}.diff`, diff, { flag: "wx" });
     new DispatchRepository(database).recordEvidence({
       id: `evidence-${result.attemptId}`,
@@ -104,6 +109,7 @@ test("real OpenCode worker completes durable dispatch path", async () => {
       model,
       dispatch: { intentPersistedBeforeWorker: true, ...dispatch },
       execution: result,
+      usage,
       verifier: { status: "passed", output: verifier },
       diffSha256: createHash("sha256").update(diff).digest("hex"),
       review: { status: "blocked", reason: "No independent reviewer configured" },
