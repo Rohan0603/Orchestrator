@@ -1,0 +1,18 @@
+{
+  "trial": "packaged-restart",
+  "date": "2026-10-19T11:18:23.491Z",
+  "packagedAlive": true,
+  "ownership": [
+    {
+      "state": "cleanup_verified",
+      "cleanup_verified": 1,
+      "last_status": "restart_reconciled",
+      "uncertainty_reason": null
+    }
+  ],
+  "runs": [
+    {
+      "recovery_state": "reconciled"
+    }
+  ]
+}

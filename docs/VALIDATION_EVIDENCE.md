@@ -442,7 +442,7 @@ checkout-owned helper remained. This qualifies packaged restart reattachment
 and cleanup for the controlled fixture worker. It does not qualify real
 OpenCode cancellation, real-provider restart recovery, or independent review.
 Reproduction command: `node experiments/runners/run-packaged-restart.mjs`.
-Machine-readable result: `experiments/results/packaged-restart-1792405361112.json`.
+Machine-readable result: `experiments/results/packaged-restart-1792408703493.json`.
 
 ## Native provider protocol checkpoint — 2026-10-19
 
