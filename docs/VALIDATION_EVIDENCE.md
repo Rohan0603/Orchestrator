@@ -466,7 +466,7 @@ Additional checks:
 | `npm run build:native-helper` | 0 | PASS |
 | `npm exec tsc -- --noEmit` | 0 | PASS |
 | `npm exec tsc -- -p tsconfig.test.json` | 0 | PASS |
-| `npm test` | 0 | PASS; all configured suites, including 8 native-ownership tests |
+| `npm test` | 0 | PASS; all configured suites, including 10 native-ownership tests |
 
 Review package: [docs/REAL_PROVIDER_REVIEW_PACKAGE.md](./REAL_PROVIDER_REVIEW_PACKAGE.md).
 This is an implementation checkpoint, not independent review or production

@@ -221,7 +221,7 @@ An actual helper owner-loss test now terminates only the helper PID identified
 by the verified helper handshake, confirms cleanup is not claimed, closes and
 reopens SQLite, and runs restart reconciliation. The run becomes
 `recovery_required`; the ownership record remains `cleanup_verified=0`.
-`npm test` passes with four native ownership tests, including owner loss and
+`npm test` passes with ten native ownership tests, including owner loss and
 restart reconciliation.
 
 The live provider path remains deliberately disabled. `executeLocalRun` still
