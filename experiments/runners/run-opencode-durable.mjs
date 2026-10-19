@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { join } from "node:path";
 import { app } from "electron";
@@ -33,6 +33,8 @@ if (!fixture || !model || !output || !sourceRevision) {
 }
 
 trace("startup");
+mkdirSync(join(fixture, ".orchestrator"), { recursive: true });
+mkdirSync(join(fixture, ".electron-user-data"), { recursive: true });
 app.setPath("userData", join(fixture, ".electron-user-data"));
 await app.whenReady();
 trace("electron-ready");
