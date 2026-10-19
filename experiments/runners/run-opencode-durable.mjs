@@ -9,6 +9,7 @@ import { executeLocalRun } from "../../dist/execution/local-execution.js";
 import { DispatchRepository } from "../../dist/persistence/dispatch-repository.js";
 import { openDatabase } from "../../dist/persistence/database.js";
 import { TaskRepository } from "../../dist/persistence/task-repository.js";
+import { RunRepository } from "../../dist/persistence/run-repository.js";
 import { realProviderRouteRequirements } from "../../dist/harness/adapter-contract.js";
 import { acceptanceCriterionId } from "../../dist/evidence/criteria.js";
 
@@ -33,6 +34,7 @@ try {
   const fixturePath = fixture;
   database = openDatabase(`${fixturePath}\\.orchestrator\\run.db`);
   const tasks = new TaskRepository(database);
+  const runs = new RunRepository(database);
   const task = tasks.create({
     title: "Real OpenCode fixture task",
     description: "Change value.txt from value=1 to value=2.",
@@ -44,7 +46,8 @@ try {
       ? join(process.env.APPDATA, "npm", "node_modules", "opencode-ai", "bin", "opencode.exe")
       : "opencode",
     version: "1.19.0",
-    model
+    model,
+    runs
   });
   const route = adapter.route;
   const manifest = await adapter.discoverCapabilities();
