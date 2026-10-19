@@ -113,8 +113,11 @@ interval instead of destroying the Job Object. A restarted helper can open the
 named Job only after validating persisted worker PID, process creation time,
 and Job membership. Reconciliation is idempotent at startup because only
 `cleanup_verified = 0` records are retried; successful reconciliation persists
-the helper identity, cleanup result, recovery state, and audit event
-transactionally.
+the replacement helper identity, matched worker/job identity, cleanup result,
+recovery state, and audit event transactionally. Persisted original helper
+identity is retained as provenance but is not independently revalidated.
+Already-exited workers use `restart_observed_exited`; active workers use
+`restart_reconciled` only after verified termination.
 
 Disposable runtime trial on 2026-10-19:
 
@@ -242,10 +245,11 @@ Commands and results:
 
 OpenCode native ownership/cancellation remains blocked. The live adapter
 continues to advertise `cancellation.request=unsupported` and
-`cancellation.ownership=unverified`; its cancellation method refuses the
-request rather than terminating an unowned process. No production OpenCode
-dispatch or cancellation was enabled, and no claim of native ownership was
-made.
+`cancellation.ownership=unverified`; route evaluation therefore refuses
+production dispatch. The adapter's cancellation implementation is wired to
+the native coordinator but remains unexercised with a real provider. No
+production OpenCode dispatch or cancellation was enabled, and no claim of
+qualified native ownership was made.
 
 The first live API attempt found and fixed a real defect: repository paths were
 encoded as one `%2F` segment, producing GitHub REST 404 responses. Shared
@@ -393,8 +397,8 @@ protocol supports fixture launch and an executable path, but does not yet
 provide a validated command-line argument, working-directory/environment,
 stdout/stderr transport, and provider-session lifecycle contract for OpenCode.
 `OpenCodeCliAdapter` therefore continues to report cancellation ownership as
-unsupported/unverified and refuses cancellation. Production live-worker
-dispatch remains disabled.
+unsupported/unverified, while its cancellation method attempts coordinator
+cleanup when invoked. Production live-worker dispatch remains disabled.
 
 Current verdict remains **PARTIAL / BLOCKED for production worker
 qualification**, while local integrity, fixture ownership, persistence,
