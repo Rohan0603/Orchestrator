@@ -249,3 +249,6 @@ The packaged process remained alive for eight seconds, then was stopped
 through its exact child PID. No checkout-owned helper remained. This qualifies
 packaged fixture restart reattachment and cleanup. Real OpenCode recovery,
 real-provider cancellation, and independent review remain blocked.
+
+Reproduction command: `node experiments/runners/run-packaged-restart.mjs`.
+Machine-readable result: `experiments/results/packaged-restart-1792405361112.json`.
