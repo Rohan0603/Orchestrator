@@ -29,12 +29,14 @@ evidence.
 - Failed or unverified cancellation enters `recovery_required`.
 - Restart reconciliation marks interrupted runs `recovery_required` rather than
   redispatching.
-- No production live-worker IPC path is enabled.
-- The fixture adapter explicitly reports cancellation and reconciliation as
-  unsupported.
+- `NativeOwnedFixtureAdapter` routes one disposable provider contract through
+  `executeLocalRun`; it is a qualification fixture, not production dispatch.
+- The live provider route remains disabled. `NativeOwnedFixtureAdapter` is the
+  only adapter allowed to use the native ownership coordinator in this slice.
 
-These behaviors are durable lifecycle safeguards, not proof of Windows process
-ownership.
+These behaviors are durable lifecycle safeguards. The disposable adapter path
+now also has kernel-level ownership evidence through the existing Electron
+main-process helper tests.
 
 ## Tested and untested
 
@@ -145,6 +147,39 @@ permitted breakaway or a host process already in a nested Job.
 Final verdict: **BLOCKED — PRODUCTION PROCESS OWNERSHIP NOT QUALIFIED**;
 prototype milestone: **PASS**.
 
+## Mission follow-up — native helper boundary
+
+The repository now contains a standalone `native\job-object-helper` executable
+source and reproducible `npm run build:native-helper` build. The helper owns
+one named Job Object, launches a worker suspended, assigns and verifies
+Job membership before resume, rejects oversized or version-mismatched
+protocol messages, and retains ownership for bounded restart reconciliation
+after stdin EOF. `npm run package:win`
+places the helper outside the packaged ASAR at
+`resources\job-object-helper.exe`; a packaged handshake smoke test passed.
+
+The Electron main process now owns a narrow `NativeOwnershipService` lifecycle
+and resolves the helper from development or packaged resource paths.
+`NativeOwnershipCoordinator` persists run, attempt, nonce, helper PID,
+helper creation-time identity, protocol version, lifecycle state, and cleanup
+evidence in SQLite. Main-process shutdown closes the supervised channel.
+
+This is still not production qualification. Startup now consumes unresolved
+ownership records, reattaches only when persisted PID, process creation time,
+and Job membership match, and records reconciliation outcomes durably. Missing
+helpers or stale identities remain recovery-required. The launch protocol
+remains limited to a validated executable path without the full authorization,
+workspace, argument, and evidence contract. Live dispatch and real-provider
+cancellation remain disabled.
+
+Current mission validation also confirmed the packaged helper handshake,
+ownership acknowledgement, and cleanup response. Starting the packaged
+Electron executable with an isolated temporary user-data directory succeeded
+for a five-second startup trial and exact parent shutdown. No packaged helper
+remained afterward. This qualifies packaged startup and parent shutdown only;
+no interrupted packaged ownership record was exercised, so packaged restart
+reattachment and owner-loss qualification remain unproven.
+
 ## Toolchain probe
 
 On 2026-10-18, a disposable C++ probe outside the repository was compiled
@@ -162,3 +197,55 @@ probe_exit=0
 This proves compiler, linker, SDK-header, and basic Job API availability only.
 It is not an ownership boundary, worker launch test, descendant test,
 termination test, Electron ABI test, or packaged-app test.
+
+## Qualification update — 2026-10-19
+
+Application Control was disabled and the packaged application was exercised
+through its real renderer IPC surface. The disposable renderer created a
+task and called `window.orchestrator.runOwnedFixture` in the packaged
+Electron process:
+
+```text
+ownershipVerified=true
+workerExecutedBeforeOwnership=false
+childContained=true
+grandchildContained=true
+cleanupVerified=true
+activeProcessesAfterCleanup=0
+```
+
+The packaged executable remained responsive for the test and was then stopped
+by its owned process handle. `npm run package:win` completed successfully.
+
+An actual helper owner-loss test now terminates only the helper PID identified
+by the verified helper handshake, confirms cleanup is not claimed, closes and
+reopens SQLite, and runs restart reconciliation. The run becomes
+`recovery_required`; the ownership record remains `cleanup_verified=0`.
+`npm test` passes with four native ownership tests, including owner loss and
+restart reconciliation.
+
+The live provider path remains deliberately disabled. `executeLocalRun` still
+uses harness adapter cancellation rather than the native ownership coordinator,
+so this evidence qualifies the explicit owned fixture path only. Production
+dispatch, cancellation, and automatic recovery remain disabled.
+
+## Packaged restart recovery trial — 2026-10-19
+
+A disposable Electron test runner persisted a running ownership record while a
+detached native helper retained its named Job Object after stdin interruption.
+Packaged Electron reopened the same isolated user-data directory and
+reconciled the persisted record.
+
+Durable result:
+
+```text
+ownership.state=cleanup_verified
+cleanup_verified=1
+last_status=restart_reconciled
+run.recovery_state=reconciled
+```
+
+The packaged process remained alive for eight seconds, then was stopped
+through its exact child PID. No checkout-owned helper remained. This qualifies
+packaged fixture restart reattachment and cleanup. Real OpenCode recovery,
+real-provider cancellation, and independent review remain blocked.
