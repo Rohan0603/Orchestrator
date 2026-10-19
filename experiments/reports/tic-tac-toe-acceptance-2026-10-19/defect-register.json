@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "defect-register-v1",
+  "defects": [
+    {
+      "id": "ORCH-E2E-001",
+      "severity": "high",
+      "component": "production lifecycle",
+      "status": "open",
+      "description": "Production UI exposes deterministic fixture execution only; requested planning, implementation, independent review, repair, and PR lifecycle is not wired.",
+      "evidence": "src/main/main.ts and src/shared/ipc.ts expose tasks:run-fixture and tasks:run-owned-fixture, but no worker-chain or PR route."
+    },
+    {
+      "id": "ORCH-E2E-002",
+      "severity": "high",
+      "component": "evidence capture",
+      "status": "open",
+      "description": "Custom disposable Electron capture timed out before producing correlated task/run/database output.",
+      "evidence": "Runner shell stopped after bounded wait; no output file was emitted."
+    },
+    {
+      "id": "ORCH-E2E-003",
+      "severity": "medium",
+      "component": "GitHub Project synchronization",
+      "status": "open",
+      "description": "gh project item-add returned IDs for issues #3 and #4, but later project item-list omitted both.",
+      "evidence": "Read-back contained issues #1, #2, #5 and PR #1 only."
+    },
+    {
+      "id": "ORCH-E2E-004",
+      "severity": "medium",
+      "component": "independent review",
+      "status": "blocked",
+      "description": "No independent review worker or repair cycle is available in current single-agent configuration.",
+      "evidence": "Existing acceptance path records blocked decision when review is unavailable."
+    }
+  ]
+}

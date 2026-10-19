@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "validation-results-v1",
+  "results": [
+    {"command":"npm exec tsc -- --noEmit","repository":"Orchestrator","exitCode":0,"result":"pass"},
+    {"command":"npm test","repository":"Orchestrator","exitCode":0,"result":"pass","notes":"Configured Electron and runner suites passed; exact output retained in session tool log."},
+    {"command":"npm test","repository":"orchestrator-tic-tac-toe-e2e","exitCode":0,"result":"pass","tests":18},
+    {"command":"git diff --check","repository":"orchestrator-tic-tac-toe-e2e","exitCode":0,"result":"pass"},
+    {"command":"node scripts/run-electron-tests.mjs --expected=1 dist-test/tests/ui-core.test.js","repository":"Orchestrator","exitCode":0,"result":"pass","notes":"UI task creation, duplicate fixture prevention, and blocked acceptance."},
+    {"command":"read-only Electron database export","repository":"Orchestrator","result":"blocked","notes":"Disposable script timed out before startup; no counts claimed."},
+    {"command":"CodeRabbit review","repository":"orchestrator-tic-tac-toe-e2e","result":"in-progress","notes":"Trigger acknowledged; final review unavailable at report cutoff."}
+  ]
+}

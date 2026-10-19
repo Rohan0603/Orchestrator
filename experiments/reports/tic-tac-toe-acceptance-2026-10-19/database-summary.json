@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "database-summary-v1",
+  "captureStatus": "blocked",
+  "databasePath": "%APPDATA%\\orchestrator\\orchestrator.db",
+  "reason": "Read-only Electron export script timed out before startup; no database records are asserted for this test.",
+  "integrityCheck": null,
+  "counts": null,
+  "testRecordIds": [],
+  "schemaTables": [
+    "tasks",
+    "runs",
+    "attempts",
+    "approvals",
+    "audit_events",
+    "outbox",
+    "evidence",
+    "recovery",
+    "policy_decisions",
+    "workspace_targets",
+    "dispatch_intents",
+    "progress_cursors",
+    "progress_events",
+    "evidence_records",
+    "acceptance_decisions",
+    "cancellation_requests",
+    "ownership_records",
+    "github_task_links",
+    "github_sync_events",
+    "coderabbit_reviews"
+  ]
+}
