@@ -496,9 +496,24 @@ export class OpenCodeCliAdapter implements HarnessAdapter {
 
   private async observeOwnedRun(state: ProcessState, correlation: Correlation): Promise<void> {
     if (!state.coordinator) return;
+    let polls = 0;
     try {
       while (!state.terminal) {
         const status = await state.coordinator.status();
+        polls += 1;
+        if (process.env.ORCHESTRATOR_DIAGNOSTICS === "1" && polls % 100 === 0) {
+          console.error("OpenCode ownership diagnostic", {
+            runId: correlation.runId,
+            workerPid: status.workerPid,
+            running: status.running,
+            activeProcesses: status.activeProcesses,
+            outputDrained: status.outputDrained,
+            exitCode: status.exitCode,
+            malformedEvents: state.malformedEvents,
+            stdoutBufferLength: state.stdoutBuffer.length,
+            stderrLength: state.stderrLength
+          });
+        }
         if (!status.running) {
           if (!status.outputDrained) {
             await new Promise((resolve) => setTimeout(resolve, 10));
