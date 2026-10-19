@@ -15,7 +15,7 @@ Environment for current validation:
 | Command | Exit | Result | Notes |
 |---|---:|---|---|
 | `npm exec tsc -- --noEmit` | 0 | PASS | No diagnostics |
-| `npm test` | 0 | PASS | 54 test cases: 51 Electron suites plus 3 runner regression tests |
+| `npm test` | 0 | PASS | 55 test cases: 52 Electron suites plus 3 runner regression tests |
 | `npm run build` | 0 | PASS | TypeScript build and renderer assets |
 | `npm audit --json` | 0 | PASS | 0 critical, high, moderate, or low vulnerabilities in current install |
 | `git diff --check` | 0 | PASS | No whitespace errors |
@@ -67,7 +67,7 @@ At commit `75f6909` on Windows with Node `v24.19.0`, npm `12.0.2`, Electron
 
 | Command | Exit | Result |
 |---|---:|---|
-| `npm test` | 0 | PASS, 54/54 test cases |
+| `npm test` | 0 | PASS, 55/55 test cases |
 | `npm exec tsc -- --noEmit` | 0 | PASS |
 | `npm run build` | 0 | PASS |
 | `npm audit --json` | 0 | PASS, 0 critical/high/moderate/low |
@@ -287,7 +287,7 @@ phase.
 
 On 2026-10-18, this checkout reran:
 
-- `npm test`: exit 0, 54/54 test cases.
+- `npm test`: exit 0, 55/55 test cases.
 - `npm exec tsc -- --noEmit`: exit 0.
 - `npm run build`: exit 0.
 - `npm audit --json`: exit 0, zero reported vulnerabilities.
@@ -516,7 +516,7 @@ Latest post-hardening validation also passed:
 | `npm run build:native-helper` | 0 | PASS |
 | `node scripts/run-electron-tests.mjs --expected=8 dist-test/tests/native-ownership.test.js` | 0 | 8/8 PASS |
 | `node scripts/run-electron-tests.mjs --expected=10 dist-test/tests/sqlite-runtime.test.js` | 0 | 10/10 PASS |
-| `npm test` | 0 | 54/54 test cases PASS |
+| `npm test` | 0 | 55/55 test cases PASS |
 | `npm run build` | 0 | PASS |
 | `git diff --check` | 0 | PASS |
 

@@ -136,6 +136,9 @@ const migrations: readonly string[] = [
     );
   `,
   `
+    ALTER TABLE evidence_records ADD COLUMN criterion_ids TEXT NOT NULL DEFAULT '[]';
+  `,
+  `
     CREATE TABLE IF NOT EXISTS acceptance_decisions (
       id TEXT PRIMARY KEY NOT NULL,
       run_id TEXT NOT NULL UNIQUE REFERENCES runs(id),

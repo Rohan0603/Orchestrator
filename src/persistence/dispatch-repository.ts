@@ -89,8 +89,8 @@ export class DispatchRepository {
         .prepare(
           `INSERT INTO evidence_records
             (id, run_id, attempt_id, event_id, kind, provenance, uri, content_hash,
-             captured_at, status, independently_verified, completeness_note)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+             captured_at, status, independently_verified, completeness_note, criterion_ids)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           evidence.id,
@@ -104,7 +104,8 @@ export class DispatchRepository {
           evidence.capturedAt,
           evidence.status,
           evidence.independentlyVerified ? 1 : 0,
-          evidence.completenessNote
+          evidence.completenessNote,
+          JSON.stringify(evidence.criterionIds)
         );
     } catch (error) {
       throw new PersistenceError("Evidence persistence failed", { cause: error });
@@ -141,6 +142,7 @@ export class DispatchRepository {
             status: EvidenceRecord["status"];
             independently_verified: number;
             completeness_note: string | null;
+            criterion_ids: string;
           }>;
         return rows.map((row) => ({
           id: row.id,
@@ -157,7 +159,8 @@ export class DispatchRepository {
           capturedAt: row.captured_at,
           status: row.status,
           independentlyVerified: row.independently_verified === 1,
-          completenessNote: row.completeness_note
+          completenessNote: row.completeness_note,
+          criterionIds: JSON.parse(row.criterion_ids) as string[]
         }));
       } catch (error) {
         throw new PersistenceError("Evidence lookup failed", { cause: error });

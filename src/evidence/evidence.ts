@@ -16,6 +16,7 @@ export interface EvidenceRecord {
   readonly status: EvidenceStatus;
   readonly independentlyVerified: boolean;
   readonly completenessNote: string | null;
+  readonly criterionIds: readonly string[];
 }
 
 export function isAcceptableEvidence(evidence: EvidenceRecord): boolean {

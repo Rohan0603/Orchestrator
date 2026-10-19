@@ -17,6 +17,7 @@ import {
   type ProgressCursor
 } from "../src/dispatch/dispatch-contract";
 import { isAcceptableEvidence, type EvidenceRecord } from "../src/evidence/evidence";
+import { acceptanceCriterionIds, evidenceCoversCriteria } from "../src/evidence/criteria";
 import { evaluateAcceptance } from "../src/acceptance/acceptance";
 
 const context = {
@@ -253,7 +254,8 @@ test("evidence acceptance requires orchestrator verification and completeness", 
     capturedAt: "2026-01-01T00:00:00.000Z",
     status: "present",
     independentlyVerified: true,
-    completenessNote: null
+    completenessNote: null,
+    criterionIds: []
   };
   assert.equal(isAcceptableEvidence(evidence), true);
   assert.equal(
@@ -261,6 +263,30 @@ test("evidence acceptance requires orchestrator verification and completeness", 
     false
   );
   assert.equal(isAcceptableEvidence({ ...evidence, status: "incomplete" }), false);
+});
+
+test("criterion evidence requires exact one-to-one criterion linkage", () => {
+  const criteria = ["build", "test"];
+  const ids = acceptanceCriterionIds(criteria);
+  const evidence = (criterionIds: readonly string[]): EvidenceRecord => ({
+    id: criterionIds.join("-"),
+    kind: "artifact",
+    correlation: progress(1).correlation,
+    eventId: "event-criteria",
+    provenance: "orchestrator_verified",
+    uri: "file:///artifact",
+    contentHash: null,
+    capturedAt: "2026-01-01T00:00:00.000Z",
+    status: "present",
+    independentlyVerified: true,
+    completenessNote: null,
+    criterionIds
+  });
+  assert.equal(evidenceCoversCriteria(criteria, [evidence([ids[0]!]), evidence([ids[1]!])]), true);
+  assert.equal(evidenceCoversCriteria(criteria, [evidence([ids[0]!]), evidence([ids[0]!])]), false);
+  assert.equal(evidenceCoversCriteria(criteria, [evidence(["wrong"]) , evidence([ids[1]!])]), false);
+  assert.equal(evidenceCoversCriteria(criteria, [evidence(ids)]), false);
+  assert.equal(evidenceCoversCriteria(["duplicate", "duplicate"], [evidence([acceptanceCriterionIds(["duplicate"])[0]!])]), false);
 });
 
 test("acceptance blocks missing independent review and accepts complete evidence", () => {

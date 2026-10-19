@@ -17,6 +17,7 @@ import { RunRepository } from "../persistence/run-repository";
 import { AcceptanceRepository } from "../persistence/acceptance-repository";
 import { evaluateAcceptance } from "../acceptance/acceptance";
 import { isAcceptableEvidence } from "../evidence/evidence";
+import { evidenceCoversCriteria } from "../evidence/criteria";
 
 export interface LocalExecutionInput {
   readonly task: Task;
@@ -300,10 +301,12 @@ export async function executeLocalRun(
       .filter(isAcceptableEvidence);
     acceptanceDecision = evaluateAcceptance({
       criteriaVerified:
-        evidence.filter((item) => item.kind === "artifact" || item.kind === "diff").length >=
-        input.task.acceptanceCriteria.length,
+        evidenceCoversCriteria(
+          input.task.acceptanceCriteria,
+          evidence.filter((item) => item.kind === "artifact" || item.kind === "diff")
+        ),
       deterministicChecksPassed: evidence.some((item) => item.kind === "check"),
-      evidenceComplete: evidence.length >= input.task.acceptanceCriteria.length,
+      evidenceComplete: evidenceCoversCriteria(input.task.acceptanceCriteria, evidence),
       independentReview: "blocked"
     });
     acceptance.record(

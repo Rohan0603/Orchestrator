@@ -78,9 +78,9 @@ function scalar<T extends Record<string, unknown>>(
 test("real SQLite creates schema, enables foreign keys, and reruns migrations", () => {
   withDatabase((database) => {
     assert.equal(database.pragma("foreign_keys", { simple: true }), 1);
-    assert.equal(scalar<{ version: number }>(database, "SELECT version FROM schema_version").version, 8);
+    assert.equal(scalar<{ version: number }>(database, "SELECT version FROM schema_version").version, 9);
     assert.doesNotThrow(() => applyMigrations(database));
-    assert.equal(scalar<{ version: number }>(database, "SELECT version FROM schema_version").version, 8);
+    assert.equal(scalar<{ version: number }>(database, "SELECT version FROM schema_version").version, 9);
     for (const table of ["tasks", "approvals", "policy_decisions", "dispatch_intents", "evidence_records"]) {
       assert.ok(
         database.prepare(
@@ -159,7 +159,7 @@ test("SQLite backup restores schema and durable task state", async () => {
     const restored = openDatabase(backupPath);
     try {
       assert.equal(new TaskRepository(restored).list()[0].id, task.id);
-      assert.equal(scalar<{ version: number }>(restored, "SELECT version FROM schema_version").version, 8);
+      assert.equal(scalar<{ version: number }>(restored, "SELECT version FROM schema_version").version, 9);
       assert.equal(restored.pragma("foreign_keys", { simple: true }), 1);
     } finally {
       restored.close();
@@ -243,7 +243,8 @@ test("repositories persist task, approval, dispatch, progress, and evidence stat
       capturedAt: event.occurredAt,
       status: "present",
       independentlyVerified: true,
-      completenessNote: null
+      completenessNote: null,
+      criterionIds: []
     });
     assert.equal(
       scalar<{ count: number }>(database, "SELECT count(*) AS count FROM progress_events").count,
