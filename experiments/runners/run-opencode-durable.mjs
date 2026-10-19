@@ -22,17 +22,24 @@ const fixture = option("--fixture");
 const model = option("--model");
 const output = option("--output");
 const sourceRevision = option("--source-revision");
+const diagnostics = process.env.ORCHESTRATOR_DIAGNOSTICS === "1";
+const trace = (message) => {
+  if (diagnostics) process.stderr.write(`durable-runner: ${message}\n`);
+};
 if (!fixture || !model || !output || !sourceRevision) {
   throw new Error(
     "Usage: electron run-opencode-durable.mjs --fixture <git-dir> --model <provider/model> --output <new-json> --source-revision <commit>"
   );
 }
 
+trace("startup");
 await app.whenReady();
+trace("electron-ready");
 let database;
 try {
   const fixturePath = fixture;
   database = openDatabase(`${fixturePath}\\.orchestrator\\run.db`);
+  trace("database-open");
   const tasks = new TaskRepository(database);
   const runs = new RunRepository(database);
   const task = tasks.create({
@@ -49,6 +56,7 @@ try {
     model,
     runs
   });
+  trace("adapter-created");
   const route = adapter.route;
   const manifest = await adapter.discoverCapabilities();
   const requiredCapabilities = [
