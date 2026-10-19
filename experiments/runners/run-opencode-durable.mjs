@@ -33,6 +33,7 @@ if (!fixture || !model || !output || !sourceRevision) {
 }
 
 trace("startup");
+app.setPath("userData", join(fixture, ".electron-user-data"));
 await app.whenReady();
 trace("electron-ready");
 let database;
