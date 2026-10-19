@@ -119,12 +119,22 @@ test("helper owner loss records uncertainty and does not claim cleanup", async (
   runs.transition(created.run.id, "running", "none");
   const coordinator = new NativeOwnershipCoordinator(runs, created.run.id, created.attempt.id, executable);
   try {
-    await coordinator.launch(path.resolve(executable));
+    const launched = await coordinator.launch(path.resolve(executable));
     const identity = runs.ownershipForRun(created.run.id);
     assert.ok(identity?.helperPid);
     const helper = process.kill.bind(process);
     helper(identity.helperPid!, "SIGTERM");
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    const workerDeadline = Date.now() + 2000;
+    let workerAlive = true;
+    while (workerAlive && Date.now() < workerDeadline) {
+      try {
+        process.kill(launched.workerPid, 0);
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      } catch {
+        workerAlive = false;
+      }
+    }
+    assert.equal(workerAlive, false);
     await assert.rejects(() => coordinator.status(), /Helper channel is unavailable|Native ownership/);
     assert.equal(runs.ownershipForRun(created.run.id)?.state, "uncertain");
     assert.equal(runs.ownershipForRun(created.run.id)?.cleanupVerified, false);

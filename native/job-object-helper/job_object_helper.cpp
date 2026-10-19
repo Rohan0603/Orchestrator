@@ -190,6 +190,7 @@ bool configureJob(HANDLE& job, const std::wstring& name) {
     job = CreateJobObjectW(nullptr, name.c_str());
     if (!job) return false;
     JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
+    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
     if (SetInformationJobObject(
             job, JobObjectExtendedLimitInformation, &limits, sizeof(limits)
         )) {
@@ -316,12 +317,16 @@ std::wstring quote(const std::wstring& value) {
 class Owner {
 public:
     ~Owner() {
-        if (recoveryEvent_ != nullptr) CloseHandle(recoveryEvent_);
-        if (job_ != nullptr) CloseHandle(job_);
-        if (outputRead_ != nullptr) CloseHandle(outputRead_);
-        if (errorRead_ != nullptr) CloseHandle(errorRead_);
+        if (job_ != nullptr) {
+            TerminateJobObject(job_, 1);
+            waitForEmpty(job_, 5000);
+        }
         if (outputThread_.joinable()) outputThread_.join();
         if (errorThread_.joinable()) errorThread_.join();
+        if (outputRead_ != nullptr) CloseHandle(outputRead_);
+        if (errorRead_ != nullptr) CloseHandle(errorRead_);
+        if (recoveryEvent_ != nullptr) CloseHandle(recoveryEvent_);
+        if (job_ != nullptr) CloseHandle(job_);
         if (worker_ != nullptr) {
             CloseHandle(worker_);
         }
@@ -369,6 +374,10 @@ public:
             if (errorRead_ != nullptr) CloseHandle(errorRead_);
             outputRead_ = nullptr;
             errorRead_ = nullptr;
+            CloseHandle(recoveryEvent_);
+            recoveryEvent_ = nullptr;
+            CloseHandle(job_);
+            job_ = nullptr;
             return false;
         }
         SetHandleInformation(outputRead_, HANDLE_FLAG_INHERIT, 0);
@@ -566,6 +575,8 @@ public:
         if (worker == nullptr || processCreationTime(worker) != expectedCreationTime) {
             attachError_ = worker == nullptr ? "worker_open_failed:" + std::to_string(GetLastError()) : "worker_identity_mismatch";
             if (worker != nullptr) CloseHandle(worker);
+            CloseHandle(recoveryEvent_);
+            recoveryEvent_ = nullptr;
             CloseHandle(job_);
             job_ = nullptr;
             return false;
@@ -574,6 +585,8 @@ public:
         if (!IsProcessInJob(worker, job_, &inJob) || !inJob) {
             attachError_ = "worker_not_in_job";
             CloseHandle(worker);
+            CloseHandle(recoveryEvent_);
+            recoveryEvent_ = nullptr;
             CloseHandle(job_);
             job_ = nullptr;
             return false;
@@ -589,7 +602,10 @@ public:
     }
 
     bool shutdown() {
-        if (job_ == nullptr) return true;
+        if (job_ == nullptr) {
+            if (recoveryEvent_ != nullptr) SetEvent(recoveryEvent_);
+            return true;
+        }
         const bool stopped = TerminateJobObject(job_, 1) != FALSE && waitForEmpty(job_, 5000);
         if (stopped && recoveryEvent_ != nullptr) SetEvent(recoveryEvent_);
         return stopped;
