@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -119,22 +119,28 @@ test("helper owner loss records uncertainty and does not claim cleanup", async (
   runs.transition(created.run.id, "running", "none");
   const coordinator = new NativeOwnershipCoordinator(runs, created.run.id, created.attempt.id, executable);
   try {
-    const launched = await coordinator.launch(path.resolve(executable));
+    await coordinator.launchFixture(directory);
+    const markerDeadline = Date.now() + 2000;
+    while (
+      (!existsSync(join(directory, "worker.started")) ||
+        !existsSync(join(directory, "child.started")) ||
+        !existsSync(join(directory, "grandchild.started"))) &&
+      Date.now() < markerDeadline
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    const fixturePids = ["worker", "child", "grandchild"].map((name) =>
+      Number.parseInt(readFileSync(join(directory, `${name}.started`), "utf8").trim(), 10)
+    );
+    assert.ok(fixturePids.every((pid) => Number.isInteger(pid) && pid > 0));
     const identity = runs.ownershipForRun(created.run.id);
     assert.ok(identity?.helperPid);
     const helper = process.kill.bind(process);
     helper(identity.helperPid!, "SIGTERM");
-    const workerDeadline = Date.now() + 2000;
-    let workerAlive = true;
-    while (workerAlive && Date.now() < workerDeadline) {
-      try {
-        process.kill(launched.workerPid, 0);
-        await new Promise((resolve) => setTimeout(resolve, 25));
-      } catch {
-        workerAlive = false;
-      }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    for (const pid of fixturePids) {
+      assert.throws(() => process.kill(pid, 0));
     }
-    assert.equal(workerAlive, false);
     await assert.rejects(() => coordinator.status(), /Helper channel is unavailable|Native ownership/);
     assert.equal(runs.ownershipForRun(created.run.id)?.state, "uncertain");
     assert.equal(runs.ownershipForRun(created.run.id)?.cleanupVerified, false);
