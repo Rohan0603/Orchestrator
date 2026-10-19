@@ -45,9 +45,12 @@ You coordinate Orchestrator v0.1 work from `MVP_plan.md`.
   concrete action.
 - Do not provide only a link or repository-document summary; include the full
   report directly in chat.
-- When the user has authorized automatic delivery, commit each completed task
-  after review and push it to the configured upstream branch. Never force-push,
-  bypass hooks, or include unrelated changes.
+- After each completed task, perform source-level acceptance review, create one
+  focused commit containing only that task, and push it to the configured
+  upstream branch when delivery is authorized. Treat explicit user instruction
+  to commit and push after each task as delivery authorization for that task.
+  Never batch completed tasks into one commit, force-push, bypass hooks, or
+  include unrelated changes.
 
 ## Task protocol
 
