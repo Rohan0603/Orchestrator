@@ -379,6 +379,15 @@ test("startup reconciliation recovers stranded created, ready, and unresolved ow
     assert.equal(runs.reconcileInterruptedRuns("2026-01-01T00:02:00.000Z").length, 0);
     runs.recordOwnership({
       ...runs.ownershipForRun(owned.run.id)!,
+      state: "exited_observed",
+      lastStatus: "restart_observed_exited",
+      cleanupVerified: false,
+      uncertaintyReason: null,
+      updatedAt: "2026-01-01T00:02:30.000Z"
+    });
+    assert.equal(runs.listUnresolvedOwnership().length, 0);
+    runs.recordOwnership({
+      ...runs.ownershipForRun(owned.run.id)!,
       state: "cleanup_verified",
       lastStatus: "restart_reconciled",
       cleanupVerified: true,
