@@ -136,6 +136,12 @@ function key(correlation: Correlation): string {
   return `${correlation.runId}:${correlation.attemptId}`;
 }
 
+function diagnostic(message: string, details: Record<string, unknown>): void {
+  if (process.env.ORCHESTRATOR_DIAGNOSTICS === "1") {
+    console.error(`OpenCode lifecycle: ${message}`, details);
+  }
+}
+
 export class OpenCodeCliAdapter implements HarnessAdapter {
   public readonly identity: HarnessIdentity = {
     adapterId: "opencode-cli-json",
@@ -282,6 +288,7 @@ export class OpenCodeCliAdapter implements HarnessAdapter {
       (event) => this.handleOutput(state, correlation, event)
     );
     try {
+      diagnostic("launch requested", { correlation, executable: this.options.executable });
       const launch = await state.coordinator.launchProcess({
         executable: this.options.executable,
         arguments: [
@@ -291,6 +298,11 @@ export class OpenCodeCliAdapter implements HarnessAdapter {
         ],
         workingDirectory: request.workingDirectory,
         environment: this.controlledEnvironment()
+      });
+      diagnostic("launch acknowledged", {
+        correlation,
+        workerPid: launch.workerPid,
+        workerCreationTime: launch.workerCreationTime
       });
       if (!launch.ownershipVerified || launch.workerExecutedBeforeOwnership) {
         throw new Error("OpenCode ownership was not verified");
