@@ -8,12 +8,11 @@ export async function reconcileUnresolvedOwnership(
   const unresolved = runRepository.listUnresolvedOwnership();
   for (const record of unresolved) {
     const service = new NativeOwnershipService(helperPath);
-    let identity: Awaited<ReturnType<NativeOwnershipService["start"]>> | undefined;
     try {
       if (record.workerPid === null || record.workerCreationTime === null || !record.nonce) {
         throw new Error("Persisted worker identity is incomplete");
       }
-      identity = await service.start();
+      await service.start();
       const correlation = {
         runId: record.runId,
         attemptId: record.attemptId,
@@ -29,17 +28,15 @@ export async function reconcileUnresolvedOwnership(
       if (status.running || status.activeProcesses > 0) {
         cleanupVerified = (await service.cancel(correlation)).cleanupVerified;
       }
-      if (!cleanupVerified) {
+      if (!observedExited && !cleanupVerified) {
         throw new Error("Reconciled ownership did not prove cleanup");
       }
       const reconciledAt = new Date().toISOString();
       runRepository.recordOwnership({
         ...record,
-        helperPid: identity.helperPid,
-        helperCreationTime: identity.helperCreationTime,
-        state: "cleanup_verified",
+        state: observedExited ? "exited_observed" : "cleanup_verified",
         lastStatus: observedExited ? "restart_observed_exited" : "restart_reconciled",
-        cleanupVerified: true,
+        cleanupVerified: !observedExited,
         uncertaintyReason: null,
         updatedAt: reconciledAt
       });
@@ -57,8 +54,6 @@ export async function reconcileUnresolvedOwnership(
       try {
         runRepository.recordOwnership({
           ...record,
-          helperPid: identity?.helperPid ?? record.helperPid,
-          helperCreationTime: identity?.helperCreationTime ?? record.helperCreationTime,
           state: "uncertain",
           lastStatus: "restart_reconciliation_unverified",
           cleanupVerified: false,

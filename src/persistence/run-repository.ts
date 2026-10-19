@@ -152,7 +152,9 @@ export class RunRepository {
   public listUnresolvedOwnership(): readonly OwnershipRecord[] {
     try {
       const rows = this.database
-        .prepare("SELECT * FROM ownership_records WHERE cleanup_verified = 0")
+        .prepare(
+          "SELECT * FROM ownership_records WHERE cleanup_verified = 0 AND state != 'exited_observed'"
+        )
         .all() as OwnershipRow[];
       return rows.map(ownershipFromRow);
     } catch (error) {

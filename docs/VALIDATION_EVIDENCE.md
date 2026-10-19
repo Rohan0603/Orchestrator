@@ -15,7 +15,7 @@ Environment for current validation:
 | Command | Exit | Result | Notes |
 |---|---:|---|---|
 | `npm exec tsc -- --noEmit` | 0 | PASS | No diagnostics |
-| `npm test` | 0 | PASS | 51 test cases: 48 Electron suites plus 3 runner regression tests |
+| `npm test` | 0 | PASS | 54 test cases: 51 Electron suites plus 3 runner regression tests |
 | `npm run build` | 0 | PASS | TypeScript build and renderer assets |
 | `npm audit --json` | 0 | PASS | 0 critical, high, moderate, or low vulnerabilities in current install |
 | `git diff --check` | 0 | PASS | No whitespace errors |
@@ -67,7 +67,7 @@ At commit `75f6909` on Windows with Node `v24.19.0`, npm `12.0.2`, Electron
 
 | Command | Exit | Result |
 |---|---:|---|
-| `npm test` | 0 | PASS, 53/53 test cases |
+| `npm test` | 0 | PASS, 54/54 test cases |
 | `npm exec tsc -- --noEmit` | 0 | PASS |
 | `npm run build` | 0 | PASS |
 | `npm audit --json` | 0 | PASS, 0 critical/high/moderate/low |
@@ -112,12 +112,13 @@ application/helper stdin disconnect, it retains ownership for a bounded
 interval instead of destroying the Job Object. A restarted helper can open the
 named Job only after validating persisted worker PID, process creation time,
 and Job membership. Reconciliation is idempotent at startup because only
-`cleanup_verified = 0` records are retried; successful reconciliation persists
-the replacement helper identity, matched worker/job identity, cleanup result,
-recovery state, and audit event transactionally. Persisted original helper
-identity is retained as provenance but is not independently revalidated.
-Already-exited workers use `restart_observed_exited`; active workers use
-`restart_reconciled` only after verified termination.
+unresolved records are retried; already-observed exited records are terminal
+and excluded from subsequent retries. Persisted original helper identity is
+retained as provenance but is not independently revalidated or replaced.
+Already-exited workers use `restart_observed_exited` with
+`cleanup_verified=0`; active workers use `restart_reconciled` only after
+verified termination. Ownership and recovery updates use separate durable
+transactions; recovery remains fail-closed if a crash occurs between them.
 
 Disposable runtime trial on 2026-10-19:
 
@@ -263,9 +264,8 @@ Review reported no actionable comments and minimal merge risk. No repair or
 merge was performed because the disposable PR contained no code defect and
 production merge remains separately gated.
 
-Project item synchronization remains unqualified because a separate Project
-could not be created without write `project` scope; unrelated Project #1 was
-left untouched.
+Project item synchronization was qualified against disposable Project #2.
+Unrelated Project #1 was left untouched.
 
 The new SQLite backup test proves schema and task-state restoration from a
 disposable backup. It does not prove retention, backup scheduling, active-run
@@ -287,7 +287,7 @@ phase.
 
 On 2026-10-18, this checkout reran:
 
-- `npm test`: exit 0, 51/51 test cases.
+- `npm test`: exit 0, 54/54 test cases.
 - `npm exec tsc -- --noEmit`: exit 0.
 - `npm run build`: exit 0.
 - `npm audit --json`: exit 0, zero reported vulnerabilities.
@@ -383,7 +383,7 @@ changes.
 
 | Command / procedure | Exit | Result | Evidence boundary |
 |---|---:|---|---|
-| `npm test` | 0 | PASS; all configured groups passed (48 Electron tests plus 3 runner regression tests) | Electron/local; fixture and integration tests |
+| `npm test` | 0 | PASS; all configured groups passed (51 Electron tests plus 3 runner regression tests) | Electron/local; fixture and integration tests |
 | `npm exec tsc -- --noEmit` | 0 | PASS | Local typecheck |
 | `npm run build` | 0 | PASS | Local production build |
 | `npm run build:native-helper` | 0 | PASS | Native helper compilation |
@@ -516,7 +516,7 @@ Latest post-hardening validation also passed:
 | `npm run build:native-helper` | 0 | PASS |
 | `node scripts/run-electron-tests.mjs --expected=8 dist-test/tests/native-ownership.test.js` | 0 | 8/8 PASS |
 | `node scripts/run-electron-tests.mjs --expected=10 dist-test/tests/sqlite-runtime.test.js` | 0 | 10/10 PASS |
-| `npm test` | 0 | 51/51 test cases PASS |
+| `npm test` | 0 | 54/54 test cases PASS |
 | `npm run build` | 0 | PASS |
 | `git diff --check` | 0 | PASS |
 

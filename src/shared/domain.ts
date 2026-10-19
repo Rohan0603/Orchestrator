@@ -115,7 +115,7 @@ export interface OwnershipRecord {
   readonly helperExecutable: string;
   readonly protocolVersion: string;
   readonly nonce: string;
-  readonly state: "starting" | "running" | "cleanup_verified" | "uncertain";
+  readonly state: "starting" | "running" | "cleanup_verified" | "exited_observed" | "uncertain";
   readonly lastStatus: string;
   readonly cleanupVerified: boolean;
   readonly uncertaintyReason: string | null;

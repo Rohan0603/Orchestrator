@@ -217,6 +217,10 @@ activeProcessesAfterCleanup=0
 The packaged executable remained responsive for the test and was then stopped
 by its owned process handle. `npm run package:win` completed successfully.
 
+Named Job Objects and recovery events use default local Windows ACLs. This is
+acceptable only for the current loopback-only, single-user threat model; it
+is not a cross-user security boundary.
+
 An actual helper owner-loss test now terminates only the helper PID identified
 by the verified helper handshake, confirms cleanup is not claimed, closes and
 reopens SQLite, and runs restart reconciliation. The run becomes
