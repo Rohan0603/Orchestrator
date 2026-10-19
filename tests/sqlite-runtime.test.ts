@@ -13,6 +13,7 @@ import { PolicyRepository } from "../src/persistence/policy-repository";
 import { RunRepository } from "../src/persistence/run-repository";
 import { TaskRepository } from "../src/persistence/task-repository";
 import { createApprovalRequest, evaluatePolicy } from "../src/policy/policy";
+import { reconcileUnresolvedOwnership } from "../src/recovery/reconcile-ownership";
 
 function withDatabase<T>(run: (database: Database.Database) => T): T {
   const directory = mkdtempSync(join(tmpdir(), "orchestrator-sqlite-"));
@@ -402,6 +403,51 @@ test("startup reconciliation recovers stranded created, ready, and unresolved ow
       { state: "reconciled" }
     );
   });
+});
+
+test("startup ownership reconciliation records missing-helper uncertainty idempotently", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "orchestrator-recovery-"));
+  const database = openDatabase(join(directory, "recovery.db"));
+  try {
+    const task = new TaskRepository(database).create({
+      title: "Recovery test",
+      description: "Exercise startup reconciliation failure",
+      acceptanceCriteria: ["uncertainty"],
+      riskTier: 1
+    });
+    const created = new RunRepository(database).createRun(task.id, "recovery-test");
+    const runs = new RunRepository(database);
+    runs.recordOwnership({
+      runId: created.run.id,
+      attemptId: created.attempt.id,
+      helperPid: null,
+      helperCreationTime: null,
+      workerPid: 42,
+      workerCreationTime: "stale",
+      helperExecutable: "missing-helper.exe",
+      protocolVersion: "orchestrator-job-v1",
+      nonce: "recovery-test-nonce",
+      state: "uncertain",
+      lastStatus: "owner_lost",
+      cleanupVerified: false,
+      uncertaintyReason: "helper lost",
+      updatedAt: new Date().toISOString()
+    });
+    runs.transition(created.run.id, "recovery_required", "recovery_required");
+    await reconcileUnresolvedOwnership(runs, join(process.cwd(), "missing-helper.exe"));
+    const first = runs.ownershipForRun(created.run.id);
+    assert.equal(first?.cleanupVerified, false);
+    assert.match(first?.lastStatus ?? "", /restart_reconciliation_unverified/);
+    assert.deepEqual(
+      database.prepare("SELECT state FROM recovery WHERE run_id = ?").get(created.run.id),
+      { state: "recovery_required" }
+    );
+    await reconcileUnresolvedOwnership(runs, join(process.cwd(), "missing-helper.exe"));
+    assert.equal(runs.listUnresolvedOwnership().length, 1);
+  } finally {
+    database.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("run creation rolls back when task foreign key is invalid", () => {
