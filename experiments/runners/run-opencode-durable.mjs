@@ -10,6 +10,7 @@ import { DispatchRepository } from "../../dist/persistence/dispatch-repository.j
 import { openDatabase } from "../../dist/persistence/database.js";
 import { TaskRepository } from "../../dist/persistence/task-repository.js";
 import { realProviderRouteRequirements } from "../../dist/harness/adapter-contract.js";
+import { acceptanceCriterionId } from "../../dist/evidence/criteria.js";
 
 function option(name) {
   const index = process.argv.indexOf(name);
@@ -131,7 +132,8 @@ try {
     capturedAt: new Date().toISOString(),
     status: "present",
     independentlyVerified: false,
-    completenessNote: "Captured by orchestrator after real adapter completion; independent verification pending"
+    completenessNote: "Captured by orchestrator after real adapter completion; independent verification pending",
+    criterionIds: [acceptanceCriterionId("Only value.txt changes")]
   });
   const counts = {
     intents: database.prepare("SELECT count(*) AS count FROM dispatch_intents").get().count,
