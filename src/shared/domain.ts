@@ -105,8 +105,25 @@ export interface RecoveryRecord {
   readonly observedAt: string;
 }
 
+export interface OwnershipRecord {
+  readonly runId: string;
+  readonly attemptId: string;
+  readonly helperPid: number | null;
+  readonly helperCreationTime: string | null;
+  readonly workerPid: number | null;
+  readonly workerCreationTime: string | null;
+  readonly helperExecutable: string;
+  readonly protocolVersion: string;
+  readonly nonce: string;
+  readonly state: "starting" | "running" | "cleanup_verified" | "uncertain";
+  readonly lastStatus: string;
+  readonly cleanupVerified: boolean;
+  readonly uncertaintyReason: string | null;
+  readonly updatedAt: string;
+}
+
 const transitions: Readonly<Record<RunState, readonly RunState[]>> = {
-  created: ["awaiting_approval", "ready", "blocked"],
+  created: ["awaiting_approval", "ready", "recovery_required", "blocked"],
   awaiting_approval: ["ready", "blocked"],
   ready: ["running", "recovery_required", "blocked"],
   running: ["verification", "rejected", "recovery_required", "blocked"],

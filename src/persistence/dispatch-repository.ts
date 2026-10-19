@@ -111,6 +111,59 @@ export class DispatchRepository {
     }
   }
 
+  public listEvidence(runId: string, attemptId: string): readonly EvidenceRecord[] {
+      try {
+        const rows = this.database
+          .prepare(
+            `SELECT evidence_records.id, evidence_records.run_id, evidence_records.attempt_id,
+                    evidence_records.event_id, dispatch_intents.dispatch_id, evidence_records.kind,
+                    evidence_records.provenance, evidence_records.uri,
+                    content_hash, captured_at, status, independently_verified,
+                    completeness_note
+             FROM evidence_records
+             JOIN dispatch_intents
+               ON dispatch_intents.run_id = evidence_records.run_id
+              AND dispatch_intents.attempt_id = evidence_records.attempt_id
+             WHERE evidence_records.run_id = ? AND evidence_records.attempt_id = ?
+             ORDER BY captured_at, evidence_records.id`
+          )
+          .all(runId, attemptId) as Array<{
+            id: string;
+            run_id: string;
+            attempt_id: string;
+            event_id: string;
+            dispatch_id: string;
+            kind: EvidenceRecord["kind"];
+            provenance: EvidenceRecord["provenance"];
+            uri: string | null;
+            content_hash: string | null;
+            captured_at: string;
+            status: EvidenceRecord["status"];
+            independently_verified: number;
+            completeness_note: string | null;
+          }>;
+        return rows.map((row) => ({
+          id: row.id,
+          kind: row.kind,
+          correlation: {
+            dispatchId: row.dispatch_id,
+            runId: row.run_id,
+            attemptId: row.attempt_id
+          },
+          eventId: row.event_id,
+          provenance: row.provenance,
+          uri: row.uri,
+          contentHash: row.content_hash,
+          capturedAt: row.captured_at,
+          status: row.status,
+          independentlyVerified: row.independently_verified === 1,
+          completenessNote: row.completeness_note
+        }));
+      } catch (error) {
+        throw new PersistenceError("Evidence lookup failed", { cause: error });
+    }
+  }
+
   public createCursor(correlation: ProgressCursor["correlation"]): ProgressCursor {
     return { correlation, lastSequence: 0, eventIds: [] };
   }

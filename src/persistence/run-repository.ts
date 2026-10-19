@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import type { CancellationReport } from "../harness/adapter-contract";
-import type { Attempt, Run } from "../shared/domain";
+import type { Attempt, OwnershipRecord, Run } from "../shared/domain";
 import { assertRunTransition } from "../shared/domain";
 import { PersistenceError } from "./database";
 
@@ -42,6 +42,42 @@ interface RunHistoryRow extends RunRow {
   attempt_created_at: string;
 }
 
+interface OwnershipRow {
+  run_id: string;
+  attempt_id: string;
+  helper_pid: number | null;
+  helper_creation_time: string | null;
+  worker_pid: number | null;
+  worker_creation_time: string | null;
+  helper_executable: string;
+  protocol_version: string;
+  nonce: string;
+  state: OwnershipRecord["state"];
+  last_status: string;
+  cleanup_verified: number;
+  uncertainty_reason: string | null;
+  updated_at: string;
+}
+
+function ownershipFromRow(row: OwnershipRow): OwnershipRecord {
+  return {
+    runId: row.run_id,
+    attemptId: row.attempt_id,
+    helperPid: row.helper_pid,
+    helperCreationTime: row.helper_creation_time,
+    workerPid: row.worker_pid,
+    workerCreationTime: row.worker_creation_time,
+    helperExecutable: row.helper_executable,
+    protocolVersion: row.protocol_version,
+    nonce: row.nonce,
+    state: row.state,
+    lastStatus: row.last_status,
+    cleanupVerified: row.cleanup_verified === 1,
+    uncertaintyReason: row.uncertainty_reason,
+    updatedAt: row.updated_at
+  };
+}
+
 function attemptFromRow(row: RunHistoryRow): Attempt {
   return {
     id: row.attempt_id,
@@ -54,6 +90,75 @@ function attemptFromRow(row: RunHistoryRow): Attempt {
 
 export class RunRepository {
   public constructor(private readonly database: Database.Database) {}
+
+  public recordOwnership(
+    record: OwnershipRecord
+  ): void {
+    try {
+      this.database
+        .prepare(
+          `INSERT INTO ownership_records
+             (run_id, attempt_id, helper_pid, helper_creation_time, helper_executable,
+              worker_pid, worker_creation_time, protocol_version, nonce, state, last_status,
+              cleanup_verified, uncertainty_reason, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(run_id) DO UPDATE SET
+             attempt_id = excluded.attempt_id,
+             helper_pid = excluded.helper_pid,
+             helper_creation_time = excluded.helper_creation_time,
+             worker_pid = excluded.worker_pid,
+             worker_creation_time = excluded.worker_creation_time,
+             helper_executable = excluded.helper_executable,
+             protocol_version = excluded.protocol_version,
+             nonce = excluded.nonce,
+             state = excluded.state,
+             last_status = excluded.last_status,
+             cleanup_verified = excluded.cleanup_verified,
+             uncertainty_reason = excluded.uncertainty_reason,
+             updated_at = excluded.updated_at`
+        )
+        .run(
+          record.runId,
+          record.attemptId,
+          record.helperPid,
+          record.helperCreationTime,
+          record.helperExecutable,
+          record.workerPid,
+          record.workerCreationTime,
+          record.protocolVersion,
+          record.nonce,
+          record.state,
+          record.lastStatus,
+          record.cleanupVerified ? 1 : 0,
+          record.uncertaintyReason,
+          record.updatedAt
+        );
+    } catch (error) {
+      throw new PersistenceError("Ownership record persistence failed", { cause: error });
+    }
+  }
+
+  public ownershipForRun(runId: string): OwnershipRecord | null {
+    try {
+      const row = this.database
+        .prepare("SELECT * FROM ownership_records WHERE run_id = ?")
+        .get(runId) as OwnershipRow | undefined;
+      return row ? ownershipFromRow(row) : null;
+    } catch (error) {
+      throw new PersistenceError("Ownership record lookup failed", { cause: error });
+    }
+  }
+
+  public listUnresolvedOwnership(): readonly OwnershipRecord[] {
+    try {
+      const rows = this.database
+        .prepare("SELECT * FROM ownership_records WHERE cleanup_verified = 0")
+        .all() as OwnershipRow[];
+      return rows.map(ownershipFromRow);
+    } catch (error) {
+      throw new PersistenceError("Unresolved ownership lookup failed", { cause: error });
+    }
+  }
 
   public listForTask(taskId: string): readonly RunHistoryEntry[] {
     try {
@@ -132,7 +237,20 @@ export class RunRepository {
             `SELECT runs.*
              FROM runs
              JOIN attempts ON attempts.run_id = runs.id
-             WHERE runs.state = 'running' AND attempts.outcome = 'pending'`
+             LEFT JOIN ownership_records
+               ON ownership_records.run_id = runs.id
+             WHERE (
+               (
+                 attempts.outcome = 'pending'
+                 AND runs.state IN ('created', 'ready', 'running')
+               )
+               OR (
+                 ownership_records.cleanup_verified = 0
+                 AND runs.state NOT IN (
+                   'accepted', 'rejected', 'blocked', 'inconclusive', 'recovery_required'
+                 )
+               )
+             )`
           )
           .all() as RunRow[];
         for (const row of rows) {
@@ -140,7 +258,7 @@ export class RunRepository {
             .prepare(
               `UPDATE runs
                SET state = 'recovery_required', recovery_state = 'recovery_required'
-               WHERE id = ? AND state = 'running'`
+               WHERE id = ? AND state IN ('created', 'ready', 'running')`
             )
             .run(row.id);
           this.database
@@ -178,20 +296,49 @@ export class RunRepository {
     }
   }
 
+  public recordRecoveryOutcome(
+    runId: string,
+    state: "reconciled" | "recovery_required",
+    reason: string,
+    observedAt: string
+  ): void {
+    try {
+      this.database.transaction(() => {
+        const result = this.database
+          .prepare("UPDATE runs SET recovery_state = ? WHERE id = ? AND state = 'recovery_required'")
+          .run(state, runId);
+        if (result.changes !== 1) throw new Error("Recovery run not found");
+        this.database
+          .prepare(
+            `INSERT INTO recovery (run_id, state, reason, observed_at)
+             VALUES (?, ?, ?, ?)
+             ON CONFLICT(run_id) DO UPDATE SET
+               state = excluded.state,
+               reason = excluded.reason,
+               observed_at = excluded.observed_at`
+          )
+          .run(runId, state, reason, observedAt);
+        this.appendAudit("run.recovery_reconciled", { runId, state, reason, observedAt });
+      })();
+    } catch (error) {
+      throw new PersistenceError("Recovery outcome persistence failed", { cause: error });
+    }
+  }
+
   public transition(runId: string, state: Run["state"], recoveryState: Run["recoveryState"]): void {
     try {
-      const result = this.database.transaction(() => {
+      this.database.transaction(() => {
         const current = this.database
           .prepare("SELECT state FROM runs WHERE id = ?")
           .get(runId) as { state: Run["state"] } | undefined;
         if (!current) throw new Error("Run not found");
         assertRunTransition(current.state, state);
-        return this.database
+        const result = this.database
           .prepare("UPDATE runs SET state = ?, recovery_state = ? WHERE id = ?")
           .run(state, recoveryState, runId);
+        if (result.changes !== 1) throw new Error("Run not found");
+        this.appendAudit("run.state_changed", { runId, state, recoveryState });
       })();
-      if (result.changes !== 1) throw new Error("Run not found");
-      this.appendAudit("run.state_changed", { runId, state, recoveryState });
     } catch (error) {
       throw new PersistenceError("Run state transition failed", { cause: error });
     }

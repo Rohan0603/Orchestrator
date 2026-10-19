@@ -101,6 +101,26 @@ export interface RouteRequirements {
   readonly allowExplicitFallback: boolean;
 }
 
+export const REAL_PROVIDER_CAPABILITIES: readonly CapabilityRequirement[] = ([
+  "run.create",
+  "progress.structured",
+  "terminal.outcome",
+  "cancellation.request",
+  "cancellation.ownership",
+  "deadline.enforcement",
+  "artifact.provenance",
+  "restart.reconciliation",
+  "dispatch.idempotency"
+] as CapabilityKey[]).map((key) => ({ key, mandatory: true, prerequisites: [] }));
+
+export function realProviderRouteRequirements(routeId: string): RouteRequirements {
+  return {
+    routeId,
+    capabilities: REAL_PROVIDER_CAPABILITIES,
+    allowExplicitFallback: false
+  };
+}
+
 export type RouteDecision = "ready" | "blocked";
 
 export interface RouteEvaluation {

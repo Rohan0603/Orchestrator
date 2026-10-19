@@ -156,6 +156,65 @@ const migrations: readonly string[] = [
       process_ownership_verified INTEGER NOT NULL CHECK (process_ownership_verified IN (0, 1)),
       error_json TEXT
     );
+  `,
+  `
+    CREATE TABLE IF NOT EXISTS ownership_records (
+      run_id TEXT PRIMARY KEY NOT NULL REFERENCES runs(id),
+      attempt_id TEXT NOT NULL REFERENCES attempts(id),
+      helper_pid INTEGER,
+      helper_creation_time TEXT,
+      helper_executable TEXT NOT NULL,
+      protocol_version TEXT NOT NULL,
+      nonce TEXT NOT NULL,
+      state TEXT NOT NULL,
+      last_status TEXT NOT NULL,
+      cleanup_verified INTEGER NOT NULL CHECK (cleanup_verified IN (0, 1)),
+      uncertainty_reason TEXT,
+      updated_at TEXT NOT NULL
+    );
+  `,
+  `
+    ALTER TABLE ownership_records ADD COLUMN worker_pid INTEGER;
+    ALTER TABLE ownership_records ADD COLUMN worker_creation_time TEXT;
+  `,
+  `
+    CREATE TABLE IF NOT EXISTS github_task_links (
+      task_id TEXT PRIMARY KEY NOT NULL REFERENCES tasks(id),
+      repository TEXT NOT NULL,
+      issue_number INTEGER NOT NULL,
+      issue_node_id TEXT NOT NULL,
+      project_id TEXT,
+      project_item_id TEXT,
+      remote_updated_at TEXT NOT NULL,
+      remote_state TEXT NOT NULL CHECK (remote_state IN ('open', 'closed')),
+      branch_name TEXT,
+      pull_request_number INTEGER,
+      pull_request_url TEXT,
+      sync_state TEXT NOT NULL CHECK (sync_state IN ('synced', 'conflict', 'error')),
+      sync_error TEXT,
+      last_synced_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS github_task_links_issue
+      ON github_task_links(repository, issue_number);
+    CREATE TABLE IF NOT EXISTS github_sync_events (
+      event_id TEXT PRIMARY KEY NOT NULL,
+      task_id TEXT NOT NULL REFERENCES tasks(id),
+      kind TEXT NOT NULL,
+      remote_updated_at TEXT NOT NULL,
+      payload_json TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS coderabbit_reviews (
+      id TEXT PRIMARY KEY NOT NULL,
+      task_id TEXT NOT NULL REFERENCES tasks(id),
+      run_id TEXT REFERENCES runs(id),
+      pull_request_number INTEGER NOT NULL,
+      iteration INTEGER NOT NULL,
+      state TEXT NOT NULL CHECK (state IN ('requested', 'received', 'fixing', 'verified', 'blocked')),
+      source TEXT NOT NULL CHECK (source IN ('live', 'fixture')),
+      findings_json TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
   `
 ];
 

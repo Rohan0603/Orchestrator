@@ -1,4 +1,5 @@
 import type { AcceptanceRecord, Run, Attempt, Task } from "./domain";
+import type { GitHubSyncResult } from "../integrations/github";
 
 export interface CreateTaskInput {
   readonly title: string;
@@ -20,6 +21,17 @@ export interface FixtureRunSummary {
   readonly progressAccepted: number;
   readonly progressRejected: number;
   readonly acceptance: AcceptanceRecord | null;
+}
+
+export interface OwnedFixtureRunSummary {
+  readonly runId: string;
+  readonly attemptId: string;
+  readonly ownershipVerified: true;
+  readonly workerExecutedBeforeOwnership: false;
+  readonly childContained: true;
+  readonly grandchildContained: true;
+  readonly cleanupVerified: true;
+  readonly activeProcessesAfterCleanup: 0;
 }
 
 export interface RunHistoryEntry {
@@ -48,6 +60,15 @@ export interface OrchestratorApi {
   listRuns(taskId: string): Promise<IpcResult<readonly RunHistoryEntry[]>>;
   createTask(input: CreateTaskInput): Promise<IpcResult<Task>>;
   runFixture(taskId: string): Promise<IpcResult<FixtureRunSummary>>;
+  runOwnedFixture(taskId: string): Promise<IpcResult<OwnedFixtureRunSummary>>;
+  importGitHubIssue(repository: string, projectId: string, issueNumber: number): Promise<IpcResult<GitHubSyncResult>>;
+  syncGitHubTask(taskId: string, progress: string | null): Promise<IpcResult<GitHubSyncResult>>;
+  updateGitHubProjectField(
+    projectId: string,
+    itemId: string,
+    fieldId: string,
+    optionId: string
+  ): Promise<IpcResult<null>>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

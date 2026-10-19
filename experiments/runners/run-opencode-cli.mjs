@@ -21,20 +21,14 @@ if (!fixture || !model || !output || !sourceRevision) {
 
 const fixturePath = resolve(fixture);
 const outputPath = resolve(output);
-const route = {
-  routeId: `opencode-cli:${model}`,
-  provider: { state: "known", name: model.split("/")[0] },
-  model: { state: "known", name: model.slice(model.indexOf("/") + 1) },
-  reportedBy: "adapter"
-};
 const adapter = new OpenCodeCliAdapter({
   executable: process.platform === "win32"
     ? join(process.env.APPDATA, "npm", "node_modules", "opencode-ai", "bin", "opencode.exe")
     : "opencode",
   version: "1.19.0",
-  route,
   model
 });
+const route = adapter.route;
 const correlation = {
   dispatchId: `real-${Date.now()}`,
   runId: `real-${Date.now()}`,

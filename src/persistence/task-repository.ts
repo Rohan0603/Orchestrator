@@ -31,13 +31,16 @@ export class TaskRepository {
 
   public list(): readonly Task[] {
     try {
-      const rows = this.database
-        .prepare("SELECT * FROM tasks ORDER BY created_at DESC")
-        .all() as TaskRow[];
+      const rows = this.database.prepare("SELECT * FROM tasks ORDER BY created_at DESC").all() as TaskRow[];
       return rows.map(fromRow);
     } catch (error) {
       throw new PersistenceError("Task listing failed", { cause: error });
     }
+  }
+
+  public get(taskId: string): Task | null {
+    const row = this.database.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId) as TaskRow | undefined;
+    return row ? fromRow(row) : null;
   }
 
   public create(input: CreateTaskInput): Task {
@@ -51,24 +54,34 @@ export class TaskRepository {
       createdAt: new Date().toISOString()
     };
     try {
-      this.database
-        .prepare(
-          `INSERT INTO tasks
-            (id, title, description, acceptance_criteria, risk_tier, status, created_at)
-           VALUES (@id, @title, @description, @acceptanceCriteria, @riskTier, @status, @createdAt)`
-        )
-        .run({
-          id: task.id,
-          title: task.title,
-          description: task.description,
-          acceptanceCriteria: JSON.stringify(task.acceptanceCriteria),
-          riskTier: task.riskTier,
-          status: task.status,
-          createdAt: task.createdAt
-        });
+      this.database.prepare(
+        `INSERT INTO tasks
+          (id, title, description, acceptance_criteria, risk_tier, status, created_at)
+         VALUES (@id, @title, @description, @acceptanceCriteria, @riskTier, @status, @createdAt)`
+      ).run({
+        id: task.id,
+        title: task.title,
+        description: task.description,
+        acceptanceCriteria: JSON.stringify(task.acceptanceCriteria),
+        riskTier: task.riskTier,
+        status: task.status,
+        createdAt: task.createdAt
+      });
       return task;
     } catch (error) {
       throw new PersistenceError("Task creation failed", { cause: error });
+    }
+  }
+
+  public updateStatus(taskId: string, status: Task["status"]): Task {
+    try {
+      const result = this.database.prepare("UPDATE tasks SET status = ? WHERE id = ?").run(status, taskId);
+      if (result.changes !== 1) throw new Error("Task not found");
+      const row = this.database.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId) as TaskRow | undefined;
+      if (!row) throw new Error("Task not found");
+      return fromRow(row);
+    } catch (error) {
+      throw new PersistenceError("Task status update failed", { cause: error });
     }
   }
 }

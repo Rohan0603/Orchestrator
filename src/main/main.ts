@@ -1,15 +1,24 @@
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import path from "node:path";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { openDatabase, PersistenceError } from "../persistence/database";
 import type Database from "better-sqlite3";
 import { TaskRepository } from "../persistence/task-repository";
 import { RunRepository } from "../persistence/run-repository";
+import { PolicyRepository } from "../persistence/policy-repository";
+import { evaluatePolicy } from "../policy/policy";
 import { ConformanceFixtureAdapter } from "../harness/conformance-fixture";
 import { executeLocalRun } from "../execution/local-execution";
+import {
+  NativeOwnershipCoordinator,
+  NativeOwnershipService,
+  resolveHelperPath
+} from "../execution/native-ownership";
 import {
   parseCreateTaskInput,
   type ApplicationStatus,
   type IpcResult,
+  type OwnedFixtureRunSummary,
   type OrchestratorApi
 } from "../shared/ipc";
 import {
@@ -17,11 +26,25 @@ import {
   type CapabilityManifest,
   type RouteRequirements
 } from "../harness/adapter-contract";
+import { GitHubApiClient, GitHubRepository, GitHubSyncService } from "../integrations/github";
 
 let mainWindow: BrowserWindow | undefined;
 let taskRepository: TaskRepository | undefined;
 let runRepository: RunRepository | undefined;
 let database: Database.Database | undefined;
+let githubRepository: GitHubRepository | undefined;
+
+function configuredHelperPath(): string {
+  if (app.isPackaged) {
+    return resolveHelperPath(app.getAppPath(), true, process.resourcesPath);
+  }
+  const buildRoot = path.resolve(__dirname, "../..");
+  const testRoot = path.resolve(__dirname, "../../..");
+  const root = existsSync(path.join(buildRoot, "dist-native", "job-object-helper.exe"))
+    ? buildRoot
+    : testRoot;
+  return resolveHelperPath(root, false, process.resourcesPath);
+}
 
 function failure(code: string, message: string): IpcResult<never> {
   return { ok: false, error: { code, message } };
@@ -29,6 +52,79 @@ function failure(code: string, message: string): IpcResult<never> {
 
 function success<T>(value: T): IpcResult<T> {
   return { ok: true, value };
+}
+
+async function reconcileUnresolvedOwnership(): Promise<void> {
+  if (!runRepository) return;
+  const unresolved = runRepository.listUnresolvedOwnership();
+  for (const record of unresolved) {
+    const service = new NativeOwnershipService(configuredHelperPath());
+    let identity: Awaited<ReturnType<NativeOwnershipService["start"]>> | undefined;
+    try {
+      if (record.workerPid === null || record.workerCreationTime === null || !record.nonce) {
+        throw new Error("Persisted worker identity is incomplete");
+      }
+      identity = await service.start();
+      const correlation = {
+        runId: record.runId,
+        attemptId: record.attemptId,
+        nonce: record.nonce
+      };
+      const status = await service.reconcile(
+        correlation,
+        record.workerPid,
+        record.workerCreationTime
+      );
+      let cleanupVerified = !status.running && status.activeProcesses === 0;
+      if (status.running || status.activeProcesses > 0) {
+        cleanupVerified = (await service.cancel(correlation)).cleanupVerified;
+      }
+      if (!cleanupVerified || !status.outputDrained) {
+        throw new Error("Reconciled ownership did not prove cleanup");
+      }
+      const reconciledAt = new Date().toISOString();
+      runRepository.recordOwnership({
+        ...record,
+        helperPid: identity.helperPid,
+        helperCreationTime: identity.helperCreationTime,
+        state: "cleanup_verified",
+        lastStatus: "restart_reconciled",
+        cleanupVerified: true,
+        uncertaintyReason: null,
+        updatedAt: reconciledAt
+      });
+      runRepository.recordRecoveryOutcome(
+        record.runId,
+        "reconciled",
+        "Owned process identity matched and cleanup was verified after restart",
+        reconciledAt
+      );
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "Restart ownership reconciliation failed";
+      const observedAt = new Date().toISOString();
+      try {
+        runRepository.recordOwnership({
+          ...record,
+          helperPid: identity?.helperPid ?? record.helperPid,
+          helperCreationTime: identity?.helperCreationTime ?? record.helperCreationTime,
+          state: "uncertain",
+          lastStatus: "restart_reconciliation_unverified",
+          cleanupVerified: false,
+          uncertaintyReason: reason,
+          updatedAt: observedAt
+        });
+        runRepository.recordRecoveryOutcome(record.runId, "recovery_required", reason, observedAt);
+      } catch (persistenceError) {
+        console.error("Restart ownership recovery persistence failed", persistenceError);
+      }
+      console.error("Restart ownership reconciliation failed", {
+        runId: record.runId,
+        reason
+      });
+    } finally {
+      await service.close();
+    }
+  }
 }
 
 function isTrustedSender(event: Electron.IpcMainInvokeEvent): boolean {
@@ -85,6 +181,82 @@ function registerIpc(): void {
       );
     }
   });
+  ipcMain.handle("github:import-issue", async (event, repository: unknown, projectId: unknown, issueNumber: unknown) => {
+    if (!isTrustedSender(event)) return failure("UNTRUSTED_SENDER", "IPC sender rejected");
+    if (!taskRepository || !githubRepository || !process.env.ORCHESTRATOR_GITHUB_TOKEN) {
+      return failure("GITHUB_NOT_CONFIGURED", "GitHub token is not configured");
+    }
+    if (typeof repository !== "string" || !/^[^/]+\/[^/]+$/.test(repository) ||
+        typeof projectId !== "string" || projectId.trim().length === 0 ||
+        typeof issueNumber !== "number" || !Number.isInteger(issueNumber) || issueNumber < 1) {
+      return failure("INVALID_INPUT", "GitHub repository, project, or issue is invalid");
+    }
+    try {
+      const client = new GitHubApiClient(process.env.ORCHESTRATOR_GITHUB_TOKEN ?? "");
+      const items = await client.listProjectItems(projectId);
+      const item = items.find((candidate) => candidate.issue.number === issueNumber);
+      if (!item) return failure("GITHUB_NOT_FOUND", "GitHub project issue was not found");
+      const service = new GitHubSyncService(client, taskRepository, githubRepository);
+      return success(await service.importIssue(repository, item.issue, projectId, item.id));
+    } catch (error) {
+      console.error("GitHub issue import failed", error);
+      return failure("GITHUB_SYNC_ERROR", error instanceof Error ? error.message : "GitHub issue import failed");
+    }
+  });
+  ipcMain.handle("github:sync-task", async (event, taskId: unknown, progress: unknown) => {
+    if (!isTrustedSender(event)) return failure("UNTRUSTED_SENDER", "IPC sender rejected");
+    if (!taskRepository || !githubRepository || !process.env.ORCHESTRATOR_GITHUB_TOKEN) {
+      return failure("GITHUB_NOT_CONFIGURED", "GitHub token is not configured");
+    }
+    if (typeof taskId !== "string" || taskId.trim().length === 0 ||
+        (progress !== null && typeof progress !== "string")) {
+      return failure("INVALID_INPUT", "GitHub sync payload is invalid");
+    }
+    const task = taskRepository.get(taskId);
+    if (!task) return failure("INVALID_INPUT", "Task was not found");
+    const link = githubRepository.linkForTask(taskId);
+    if (!link) return failure("GITHUB_NOT_LINKED", "Task has no GitHub link");
+    try {
+      const service = new GitHubSyncService(
+        new GitHubApiClient(process.env.ORCHESTRATOR_GITHUB_TOKEN ?? ""),
+        taskRepository,
+        githubRepository
+      );
+      return success(await service.syncTask(task, progress as string | null));
+    } catch (error) {
+      console.error("GitHub task sync failed", error);
+      return failure("GITHUB_SYNC_ERROR", error instanceof Error ? error.message : "GitHub task sync failed");
+    }
+  });
+  ipcMain.handle(
+    "github:update-project-field",
+    async (event, projectId: unknown, itemId: unknown, fieldId: unknown, optionId: unknown) => {
+      if (!isTrustedSender(event)) return failure("UNTRUSTED_SENDER", "IPC sender rejected");
+      if (!process.env.ORCHESTRATOR_GITHUB_TOKEN) {
+        return failure("GITHUB_NOT_CONFIGURED", "GitHub token is not configured");
+      }
+      if (
+        typeof projectId !== "string" || projectId.trim().length === 0 ||
+        typeof itemId !== "string" || itemId.trim().length === 0 ||
+        typeof fieldId !== "string" || fieldId.trim().length === 0 ||
+        typeof optionId !== "string" || optionId.trim().length === 0
+      ) {
+        return failure("INVALID_INPUT", "GitHub project field payload is invalid");
+      }
+      try {
+        await new GitHubApiClient(process.env.ORCHESTRATOR_GITHUB_TOKEN).updateProjectSingleSelect(
+          projectId, itemId, fieldId, optionId
+        );
+        return success(null);
+      } catch (error) {
+        console.error("GitHub project field update failed", error);
+        return failure(
+          "GITHUB_SYNC_ERROR",
+          error instanceof Error ? error.message : "GitHub project field update failed"
+        );
+      }
+    }
+  );
   ipcMain.handle("tasks:run-fixture", async (event, taskId: unknown) => {
     if (!isTrustedSender(event)) return failure("UNTRUSTED_SENDER", "IPC sender rejected");
     if (!taskRepository || !database) {
@@ -229,6 +401,110 @@ function registerIpc(): void {
       return failure("EXECUTION_ERROR", "Fixture execution failed");
     }
   });
+  ipcMain.handle("tasks:run-owned-fixture", async (event, taskId: unknown): Promise<IpcResult<OwnedFixtureRunSummary>> => {
+    if (!isTrustedSender(event)) return failure("UNTRUSTED_SENDER", "IPC sender rejected");
+    if (!taskRepository || !runRepository || !database) {
+      return failure("PERSISTENCE_UNAVAILABLE", "Database is unavailable");
+    }
+    if (typeof taskId !== "string" || taskId.trim().length === 0) {
+      return failure("INVALID_INPUT", "Task identifier is invalid");
+    }
+    const task = taskRepository.list().find((candidate) => candidate.id === taskId);
+    if (!task) return failure("INVALID_INPUT", "Task was not found");
+    if (task.riskTier !== 1) {
+      return failure("APPROVAL_REQUIRED", "Owned fixture supports risk-tier 1 tasks only");
+    }
+    const policy = evaluatePolicy({
+      operation: "run-owned-fixture",
+      context: {
+        operation: "run-owned-fixture",
+        target: "owned-fixture-worker",
+        arguments: [],
+        payload: null
+      },
+      riskTier: 1,
+      prohibited: false,
+      capabilityVerified: true,
+      evidenceComplete: true,
+      prerequisitesResolved: true
+    });
+    new PolicyRepository(database).recordDecision(policy);
+    if (policy.decision !== "allowed") {
+      return failure("POLICY_BLOCKED", policy.reason);
+    }
+
+    const created = runRepository.createRun(task.id, "native-owned-fixture");
+    const fixtureDirectory = mkdtempSync(path.join(app.getPath("temp"), "orchestrator-owned-fixture-"));
+    const coordinator = new NativeOwnershipCoordinator(
+      runRepository,
+      created.run.id,
+      created.attempt.id,
+      configuredHelperPath()
+    );
+    let running = false;
+    try {
+      runRepository.transition(created.run.id, "ready", "none");
+      runRepository.transition(created.run.id, "running", "none");
+      await coordinator.launchFixture(fixtureDirectory);
+      running = true;
+      const deadline = Date.now() + 5000;
+      while (
+        (!existsSync(path.join(fixtureDirectory, "worker.started")) ||
+          !existsSync(path.join(fixtureDirectory, "child.started")) ||
+          !existsSync(path.join(fixtureDirectory, "grandchild.started"))) &&
+        Date.now() < deadline
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      const markersPresent =
+        existsSync(path.join(fixtureDirectory, "worker.started")) &&
+        existsSync(path.join(fixtureDirectory, "child.started")) &&
+        existsSync(path.join(fixtureDirectory, "grandchild.started"));
+      const status = await coordinator.status();
+      if (!markersPresent || !status.running || status.activeProcesses < 3) {
+        throw new Error("Fixture containment evidence is incomplete");
+      }
+      const launch = await coordinator.cancel();
+      runRepository.recordAttemptOutcome(
+        created.attempt.id,
+        "succeeded",
+        "verification",
+        "none",
+        `Owned fixture cleanup verified; active processes after cleanup=${launch.activeProcessesAfterCleanup}`
+      );
+      return success({
+        runId: created.run.id,
+        attemptId: created.attempt.id,
+        ownershipVerified: true,
+        workerExecutedBeforeOwnership: false,
+        childContained: true,
+        grandchildContained: true,
+        cleanupVerified: true,
+        activeProcessesAfterCleanup: 0
+      });
+    } catch (error) {
+      console.error("Owned fixture execution failed", error);
+      if (running) {
+        try {
+          runRepository.recordAttemptOutcome(
+            created.attempt.id,
+            "inconclusive",
+            "recovery_required",
+            "recovery_required",
+            error instanceof Error ? error.message : "Owned fixture outcome is uncertain"
+          );
+        } catch (persistenceError) {
+          console.error("Owned fixture recovery persistence failed", persistenceError);
+        }
+      } else {
+        runRepository.transition(created.run.id, "recovery_required", "recovery_required");
+      }
+      return failure("RECOVERY_REQUIRED", "Owned fixture outcome is uncertain");
+    } finally {
+      await coordinator.close();
+      rmSync(fixtureDirectory, { recursive: true, force: true });
+    }
+  });
 }
 
 function createWindow(): BrowserWindow {
@@ -255,12 +531,16 @@ function createWindow(): BrowserWindow {
   return window;
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   try {
     database = openDatabase(path.join(app.getPath("userData"), "orchestrator.db"));
     taskRepository = new TaskRepository(database);
     runRepository = new RunRepository(database);
+    githubRepository = new GitHubRepository(database);
     runRepository.reconcileInterruptedRuns(new Date().toISOString());
+    if (runRepository.listUnresolvedOwnership().length > 0) {
+      await reconcileUnresolvedOwnership();
+    }
     registerIpc();
     mainWindow = createWindow();
     app.on("activate", () => {

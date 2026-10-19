@@ -9,6 +9,7 @@ import { executeLocalRun } from "../../dist/execution/local-execution.js";
 import { DispatchRepository } from "../../dist/persistence/dispatch-repository.js";
 import { openDatabase } from "../../dist/persistence/database.js";
 import { TaskRepository } from "../../dist/persistence/task-repository.js";
+import { realProviderRouteRequirements } from "../../dist/harness/adapter-contract.js";
 
 function option(name) {
   const index = process.argv.indexOf(name);
@@ -37,21 +38,30 @@ try {
     acceptanceCriteria: ["Only value.txt changes", "verify.ps1 passes"],
     riskTier: 1
   });
-  const route = {
-    routeId: `opencode-cli:${model}`,
-    provider: { state: "known", name: model.split("/")[0] },
-    model: { state: "known", name: model.slice(model.indexOf("/") + 1) },
-    reportedBy: "adapter"
-  };
   const adapter = new OpenCodeCliAdapter({
     executable: process.platform === "win32"
       ? join(process.env.APPDATA, "npm", "node_modules", "opencode-ai", "bin", "opencode.exe")
       : "opencode",
     version: "1.19.0",
-    route,
     model
   });
+  const route = adapter.route;
   const manifest = await adapter.discoverCapabilities();
+  const requiredCapabilities = [
+    "run.create",
+    "progress.structured",
+    "terminal.outcome",
+    "artifact.provenance",
+    "dispatch.idempotency"
+  ];
+  const capabilityVerified = requiredCapabilities.every((key) =>
+    manifest.capabilities.some((capability) =>
+      capability.key === key && capability.state === "supported" && capability.evidence.length > 0
+    )
+  );
+  const prerequisitesResolved = requiredCapabilities.every((key) =>
+    manifest.capabilities.some((capability) => capability.key === key)
+  );
   const result = await executeLocalRun(database, {
     task,
     action: {
@@ -64,9 +74,9 @@ try {
       },
       riskTier: 1,
       prohibited: false,
-      capabilityVerified: true,
-      evidenceComplete: true,
-      prerequisitesResolved: true
+      capabilityVerified,
+      evidenceComplete: capabilityVerified,
+      prerequisitesResolved
     },
     approval: null,
     workspace: {
@@ -79,20 +89,13 @@ try {
     },
     manifest,
     route,
-    routeRequirements: {
-      routeId: route.routeId,
-      allowExplicitFallback: false,
-      capabilities: [
-        "run.create",
-        "progress.structured",
-        "terminal.outcome",
-        "artifact.provenance",
-        "dispatch.idempotency"
-      ].map((key) => ({ key, mandatory: true, prerequisites: [] }))
-    },
+    routeRequirements: realProviderRouteRequirements(route.routeId),
     deadlineAt: new Date(Date.now() + 300000).toISOString(),
     adapter
   });
+  if (result.status !== "verification") {
+    throw new Error(`Real OpenCode run did not reach verification: ${result.status}`);
+  }
   const diff = execFileSync("git", ["diff", "--binary", "--", "value.txt"], {
     cwd: fixturePath,
     encoding: "utf8"
@@ -127,8 +130,8 @@ try {
     contentHash: createHash("sha256").update(diff).digest("hex"),
     capturedAt: new Date().toISOString(),
     status: "present",
-    independentlyVerified: true,
-    completenessNote: "Captured from git diff after real adapter completion"
+    independentlyVerified: false,
+    completenessNote: "Captured by orchestrator after real adapter completion; independent verification pending"
   });
   const counts = {
     intents: database.prepare("SELECT count(*) AS count FROM dispatch_intents").get().count,
@@ -141,14 +144,15 @@ try {
     trialId: `durable-${Date.now()}`,
     sourceRevision,
     adapter: { id: adapter.identity.adapterId, version: adapter.identity.adapterVersion, model, route },
-    dispatch: { intentPersistedBeforeWorker: true, ...dispatch, counts },
+    dispatch: { intentPersistedBeforeWorker: counts.intents > 0, ...dispatch, counts },
     execution: result,
     usage,
     verifier: { status: "passed", output: verifierOutput },
     diff: { sha256: createHash("sha256").update(diff).digest("hex"), path: evidenceUri },
     review: { status: "blocked", reason: "No independent reviewer configured" },
     acceptance: { status: result.acceptance?.decision ?? "blocked", reason: result.acceptance?.reason ?? "No decision" },
-    cancellation: { status: "blocked", reason: "Windows process ownership is unverified" }
+    cancellation: manifest.capabilities.find((capability) => capability.key === "cancellation.request")
+      ?? { state: "unreported", evidence: [] }
   }, null, 2)}\n`, { flag: "wx" });
   process.stdout.write(`${output}\n`);
 } finally {

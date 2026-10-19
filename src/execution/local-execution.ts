@@ -16,6 +16,7 @@ import { PolicyRepository } from "../persistence/policy-repository";
 import { RunRepository } from "../persistence/run-repository";
 import { AcceptanceRepository } from "../persistence/acceptance-repository";
 import { evaluateAcceptance } from "../acceptance/acceptance";
+import { isAcceptableEvidence } from "../evidence/evidence";
 
 export interface LocalExecutionInput {
   readonly task: Task;
@@ -294,10 +295,15 @@ export async function executeLocalRun(
   );
   let acceptanceDecision: AcceptanceRecord | null = null;
   if (terminal.kind === "succeeded") {
+    const evidence = dispatch
+      .listEvidence(created.run.id, created.attempt.id)
+      .filter(isAcceptableEvidence);
     acceptanceDecision = evaluateAcceptance({
-      criteriaVerified: true,
-      deterministicChecksPassed: true,
-      evidenceComplete: false,
+      criteriaVerified:
+        evidence.filter((item) => item.kind === "artifact" || item.kind === "diff").length >=
+        input.task.acceptanceCriteria.length,
+      deterministicChecksPassed: evidence.some((item) => item.kind === "check"),
+      evidenceComplete: evidence.length >= input.task.acceptanceCriteria.length,
       independentReview: "blocked"
     });
     acceptance.record(

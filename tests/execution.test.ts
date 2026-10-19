@@ -9,8 +9,10 @@ import { RunRepository } from "../src/persistence/run-repository";
 import { TaskRepository } from "../src/persistence/task-repository";
 import { executeLocalRun } from "../src/execution/local-execution";
 import { ConformanceFixtureAdapter } from "../src/harness/conformance-fixture";
+import { NativeOwnedFixtureAdapter } from "../src/harness/native-owned-fixture-adapter";
 import {
   HARNESS_ADAPTER_CONTRACT_VERSION,
+  type CapabilityKey,
   type CapabilityManifest,
   type Correlation,
   type RouteIdentity
@@ -249,6 +251,7 @@ test("local fixture execution persists intent, progress, and verification state"
       deadlineAt: "2099-01-01T00:00:00.000Z",
       adapter: adapter(scenario.terminalKind)
     });
+
     assert.equal(result.status, "verification");
     assert.equal(result.accepted, false);
     assert.equal(result.progressAccepted, 1);
@@ -269,6 +272,105 @@ test("local fixture execution persists intent, progress, and verification state"
       }
     );
   } finally {
+    scenario.database.close();
+    rmSync(scenario.directory, { recursive: true, force: true });
+  }
+});
+
+test("local execution routes disposable provider through native ownership", async () => {
+  const scenario = runScenario("succeeded");
+  const nativeAdapter = new NativeOwnedFixtureAdapter(new RunRepository(scenario.database));
+  try {
+    const nativeRoute: RouteIdentity = {
+      routeId: "native-owned-fixture",
+      provider: { state: "known", name: "orchestrator-job-helper" },
+      model: { state: "known", name: "deterministic" },
+      reportedBy: "adapter"
+    };
+    const nativeManifest = await nativeAdapter.discoverCapabilities();
+    const result = await executeLocalRun(scenario.database, {
+      task: scenario.currentTask,
+      action: action(),
+      approval: null,
+      workspace: {
+        ...workspace(),
+        repositoryPath: scenario.directory,
+        worktreePath: scenario.directory
+      },
+      manifest: nativeManifest,
+      route: nativeRoute,
+      routeRequirements: {
+        routeId: nativeRoute.routeId,
+        allowExplicitFallback: false,
+        capabilities: [
+          "run.create", "progress.structured", "terminal.outcome",
+          "cancellation.request", "cancellation.ownership", "dispatch.idempotency"
+        ].map((key) => ({
+          key: key as CapabilityKey,
+          mandatory: true,
+          prerequisites: []
+        }))
+      },
+      deadlineAt: new Date(Date.now() + 5000).toISOString(),
+      adapter: nativeAdapter
+    });
+    assert.equal(result.status, "verification");
+    assert.deepEqual(
+      scenario.database.prepare(
+        "SELECT state, cleanup_verified FROM ownership_records ORDER BY rowid DESC LIMIT 1"
+      ).get(),
+      { state: "cleanup_verified", cleanup_verified: 1 }
+    );
+  } finally {
+    await nativeAdapter.close();
+    scenario.database.close();
+    rmSync(scenario.directory, { recursive: true, force: true });
+  }
+});
+
+test("native-owned provider launch failure becomes durable rejection", async () => {
+  const scenario = runScenario("succeeded");
+  const nativeAdapter = new NativeOwnedFixtureAdapter(
+    new RunRepository(scenario.database),
+    join(scenario.directory, "missing-job-helper.exe")
+  );
+  try {
+    const nativeRoute: RouteIdentity = {
+      routeId: "native-owned-fixture",
+      provider: { state: "known", name: "orchestrator-job-helper" },
+      model: { state: "known", name: "deterministic" },
+      reportedBy: "adapter"
+    };
+    const nativeManifest = await nativeAdapter.discoverCapabilities();
+    const result = await executeLocalRun(scenario.database, {
+      task: scenario.currentTask,
+      action: action(),
+      approval: null,
+      workspace: workspace(),
+      manifest: nativeManifest,
+      route: nativeRoute,
+      routeRequirements: {
+        routeId: nativeRoute.routeId,
+        allowExplicitFallback: false,
+        capabilities: [
+          "run.create", "progress.structured", "terminal.outcome",
+          "cancellation.request", "cancellation.ownership", "dispatch.idempotency"
+        ].map((key) => ({
+          key: key as CapabilityKey,
+          mandatory: true,
+          prerequisites: []
+        }))
+      },
+      deadlineAt: "2099-01-01T00:00:00.000Z",
+      adapter: nativeAdapter
+    });
+    assert.equal(result.status, "rejected");
+    assert.equal(
+      (scenario.database.prepare("SELECT outcome FROM attempts").get() as { outcome: string }).outcome,
+      "failed"
+    );
+  } finally {
+    await nativeAdapter.close();
     scenario.database.close();
     rmSync(scenario.directory, { recursive: true, force: true });
   }

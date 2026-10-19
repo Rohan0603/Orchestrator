@@ -1,7 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { spawn, type ChildProcessByStdio } from "node:child_process";
-import type { Readable } from "node:stream";
-import { createInterface } from "node:readline";
+import { existsSync } from "node:fs";
+import type { RunRepository } from "../persistence/run-repository";
+import {
+  NativeOwnershipCoordinator,
+  resolveHelperPath,
+  type OwnedOutputEvent
+} from "../execution/native-ownership";
 import type {
   AdapterError,
   AdapterResult,
@@ -43,11 +47,12 @@ interface OpenCodeEvent {
 
 interface ProcessState {
   readonly request: CreateRunRequest;
-  readonly process: ChildProcessByStdio<null, Readable, Readable>;
+  coordinator: NativeOwnershipCoordinator | undefined;
   readonly events: ProgressEvent[];
   readonly progressHandlers: Array<(event: ProgressEvent) => void>;
   readonly terminalHandlers: Array<(outcome: TerminalOutcome) => void>;
   readonly stderr: string[];
+  stdoutBuffer: string;
   stderrLength: number;
   malformedEvents: number;
   terminal: TerminalOutcome | null;
@@ -58,8 +63,10 @@ interface ProcessState {
 export interface OpenCodeCliAdapterOptions {
   readonly executable: string;
   readonly version: string;
-  readonly route: RouteIdentity;
   readonly model: string;
+  readonly runs: RunRepository;
+  readonly helperPath?: string;
+  readonly environment?: Readonly<Record<string, string>>;
 }
 
 export interface OpenCodeUsage {
@@ -137,11 +144,22 @@ export class OpenCodeCliAdapter implements HarnessAdapter {
     contractVersion: "harness-adapter-v1"
   };
 
+  public readonly route: RouteIdentity;
   private readonly options: OpenCodeCliAdapterOptions;
   private readonly runs = new Map<string, ProcessState>();
 
   public constructor(options: OpenCodeCliAdapterOptions) {
     this.options = options;
+    const separator = options.model.indexOf("/");
+    if (separator <= 0 || separator === options.model.length - 1) {
+      throw new Error("OpenCode model must use provider/model format");
+    }
+    this.route = {
+      routeId: `opencode-cli:${options.model}`,
+      provider: { state: "known", name: options.model.slice(0, separator) },
+      model: { state: "known", name: options.model.slice(separator + 1) },
+      reportedBy: "adapter"
+    };
   }
 
   public async discoverCapabilities(): Promise<CapabilityManifest> {
@@ -170,7 +188,7 @@ export class OpenCodeCliAdapter implements HarnessAdapter {
         {
           key: "cancellation.request",
           state: "unsupported" as const,
-          evidence: ["No verified run-owned Windows Job Object binding"],
+          evidence: ["Real-provider ownership and cancellation qualification is pending"],
           conditions: [],
           satisfiedPrerequisites: [],
           version: this.options.version,
@@ -180,7 +198,7 @@ export class OpenCodeCliAdapter implements HarnessAdapter {
           key: "cancellation.ownership",
           state: "unverified" as const,
           evidence: [],
-          conditions: ["Requires supported Windows process-group ownership"],
+          conditions: ["Requires independent real-provider ownership qualification"],
           satisfiedPrerequisites: [],
           version: this.options.version,
           environment
@@ -237,108 +255,76 @@ export class OpenCodeCliAdapter implements HarnessAdapter {
         "OpenCode CLI requires a resolved executable; shell command files are not accepted"
       );
     }
-    const child = spawn(
-      this.options.executable,
-      [
-        "run",
-        "--pure",
-        "--auto",
-        "--format",
-        "json",
-        "--model",
-        this.options.model,
-        "--dir",
-        request.workingDirectory,
-        request.taskDescription
-      ],
-      {
-        cwd: request.workingDirectory,
-        windowsHide: true,
-        shell: false,
-        stdio: ["ignore", "pipe", "pipe"]
-      }
-    );
     const state: ProcessState = {
       request,
-      process: child,
+      coordinator: undefined,
       events: [],
       progressHandlers: [],
       terminalHandlers: [],
       stderr: [],
       stderrLength: 0,
+      stdoutBuffer: "",
       malformedEvents: 0,
       terminal: null,
       sequence: 0,
       usage: null
     };
     this.runs.set(runKey, state);
-    const lines = createInterface({ input: child.stdout });
-    lines.on("line", (line) => this.handleLine(state, correlation, line));
-    child.stderr.on("data", (chunk: Buffer) => {
-      if (state.stderrLength >= MAX_STDERR) return;
-      const diagnostic = chunk.toString();
-      const remaining = MAX_STDERR - state.stderrLength;
-      state.stderr.push(diagnostic.slice(0, remaining));
-      state.stderrLength += Math.min(diagnostic.length, remaining);
-    });
-    child.on("error", (cause: Error) => {
+    if (!existsSync(this.options.executable)) {
+      this.runs.delete(runKey);
+      return error(request, "provider_unavailable", "OPENCODE_EXECUTABLE_MISSING", "OpenCode executable is missing");
+    }
+    state.coordinator = new NativeOwnershipCoordinator(
+      this.options.runs,
+      correlation.runId,
+      correlation.attemptId,
+      this.options.helperPath ?? resolveHelperPath(process.cwd(), false, ""),
+      (event) => this.handleOutput(state, correlation, event)
+    );
+    try {
+      const launch = await state.coordinator.launchProcess({
+        executable: this.options.executable,
+        arguments: [
+          "run", "--pure", "--auto", "--format", "json",
+          "--model", this.options.model, "--dir", request.workingDirectory,
+          request.taskDescription
+        ],
+        workingDirectory: request.workingDirectory,
+        environment: this.controlledEnvironment()
+      });
+      if (!launch.ownershipVerified || launch.workerExecutedBeforeOwnership) {
+        throw new Error("OpenCode ownership was not verified");
+      }
+      void this.observeOwnedRun(state, correlation);
+    } catch (cause) {
+      await state.coordinator.close();
       this.finish(state, correlation, {
         kind: "inconclusive",
         correlation,
         reportedAt: new Date().toISOString(),
         evidence: [],
         error: {
-          class: "provider_unavailable",
-          code: "OPENCODE_PROCESS_ERROR",
-          message: cause.message,
+          class: "ambiguous",
+          code: "OPENCODE_OWNERSHIP_UNVERIFIED",
+          message: cause instanceof Error ? cause.message : "OpenCode ownership was not verified",
           retryable: false,
           correlation
         }
       });
-    });
-    child.on("close", (exitCode) => {
-      if (state.terminal) return;
-      if (state.malformedEvents > 0) {
-        this.finish(state, correlation, {
-          kind: "inconclusive",
-          correlation,
-          reportedAt: new Date().toISOString(),
-          evidence: [],
-          error: {
-            class: "incomplete_evidence",
-            code: "OPENCODE_MALFORMED_JSON",
-            message: `OpenCode emitted ${state.malformedEvents} malformed JSON event(s)`,
-            retryable: false,
-            correlation
-          }
-        });
-        return;
-      }
-      this.finish(state, correlation, {
-        kind: exitCode === 0 ? "succeeded" : "failed",
-        correlation,
-        reportedAt: new Date().toISOString(),
-        evidence: [],
-        error: exitCode === 0
-          ? null
-          : {
-              class: "permanent",
-              code: "OPENCODE_EXIT",
-              message: truncate(
-                `OpenCode exited with status ${exitCode}: ${state.stderr.join("").trim()}`,
-                MAX_STDERR
-              ),
-              retryable: false,
-              correlation
-            }
-      });
-    });
+      this.runs.delete(runKey);
+      return error(
+        request,
+        "ambiguous",
+        "OPENCODE_OWNERSHIP_UNVERIFIED",
+        cause instanceof Error ? cause.message : "OpenCode ownership was not verified"
+      );
+    }
     return {
       ok: true,
       value: {
         correlation,
         status: "accepted",
-        route: request.route,
+        route: this.route,
         acceptedAt: new Date().toISOString()
       }
     };
@@ -376,16 +362,57 @@ export class OpenCodeCliAdapter implements HarnessAdapter {
     correlation: Correlation,
     _deadlineAt: string
   ): Promise<AdapterResult<CancellationReport>> {
-    return {
-      ok: false,
-      error: {
-        class: "unsupported_capability",
-        code: "PROCESS_OWNERSHIP_UNVERIFIED",
-        message: `Refusing cancellation for ${correlation.runId}; run-owned Windows process ownership is unverified`,
-        retryable: false,
-        correlation
-      }
-    };
+    const state = this.runs.get(key(correlation));
+    if (!state?.coordinator) {
+      return {
+        ok: false,
+        error: {
+          class: "ambiguous",
+          code: "PROCESS_OWNERSHIP_UNAVAILABLE",
+          message: "OpenCode owner is unavailable",
+          retryable: false,
+          correlation
+        }
+      };
+    }
+    const requestedAt = new Date().toISOString();
+    try {
+      await state.coordinator.cancel();
+      const report: CancellationReport = {
+        correlation,
+        state: "completed",
+        requestedAt,
+        observedAt: new Date().toISOString(),
+        processOwnershipVerified: true,
+        error: null
+      };
+      this.finish(state, correlation, {
+        kind: "cancelled",
+        correlation,
+        reportedAt: report.observedAt ?? new Date().toISOString(),
+        evidence: [],
+        error: null
+      });
+      return { ok: true, value: report };
+    } catch (cause) {
+      return {
+        ok: true,
+        value: {
+          correlation,
+          state: "unverified",
+          requestedAt,
+          observedAt: new Date().toISOString(),
+          processOwnershipVerified: false,
+          error: {
+            class: "ambiguous",
+            code: "OPENCODE_CLEANUP_UNVERIFIED",
+            message: cause instanceof Error ? cause.message : "OpenCode cleanup was unverified",
+            retryable: false,
+            correlation
+          }
+        }
+      };
+    }
   }
 
   public async reconcile(correlation: Correlation): Promise<AdapterResult<ReconciliationReport>> {
@@ -395,7 +422,7 @@ export class OpenCodeCliAdapter implements HarnessAdapter {
       value: {
         correlation,
         state: state?.terminal ? "completed" : "unknown",
-        route: this.options.route,
+        route: this.route,
         lastSequence: state?.sequence ?? null,
         evidence: [],
         observedAt: new Date().toISOString()
@@ -405,6 +432,14 @@ export class OpenCodeCliAdapter implements HarnessAdapter {
 
   public getUsage(correlation: Correlation): OpenCodeUsage | null {
     return this.runs.get(key(correlation))?.usage ?? null;
+  }
+
+  public async close(): Promise<void> {
+    await Promise.all(
+      [...this.runs.values()]
+        .map((state) => state.coordinator?.close())
+        .filter((close): close is Promise<void> => Boolean(close))
+    );
   }
 
   private handleLine(state: ProcessState, correlation: Correlation, line: string): void {
@@ -439,6 +474,106 @@ export class OpenCodeCliAdapter implements HarnessAdapter {
     state.sequence = progress.sequence;
     state.events.push(progress);
     for (const handler of state.progressHandlers) handler(progress);
+  }
+
+  private handleOutput(state: ProcessState, correlation: Correlation, event: OwnedOutputEvent): void {
+    if (event.stream === "stderr") {
+      if (state.stderrLength >= MAX_STDERR) return;
+      const remaining = MAX_STDERR - state.stderrLength;
+      state.stderr.push(event.data.slice(0, remaining));
+      state.stderrLength += Math.min(event.data.length, remaining);
+      return;
+    }
+    state.stdoutBuffer += event.data;
+    let newline = state.stdoutBuffer.indexOf("\n");
+    while (newline >= 0) {
+      const line = state.stdoutBuffer.slice(0, newline).replace(/\r$/, "");
+      state.stdoutBuffer = state.stdoutBuffer.slice(newline + 1);
+      this.handleLine(state, correlation, line);
+      newline = state.stdoutBuffer.indexOf("\n");
+    }
+  }
+
+  private async observeOwnedRun(state: ProcessState, correlation: Correlation): Promise<void> {
+    if (!state.coordinator) return;
+    try {
+      while (!state.terminal) {
+        const status = await state.coordinator.status();
+        if (!status.running) {
+          if (!status.outputDrained) {
+            await new Promise((resolve) => setTimeout(resolve, 10));
+            continue;
+          }
+          await state.coordinator.verifyStopped();
+          if (state.stdoutBuffer.trim()) this.handleLine(state, correlation, state.stdoutBuffer);
+          if (state.malformedEvents > 0) {
+            this.finish(state, correlation, {
+              kind: "inconclusive",
+              correlation,
+              reportedAt: new Date().toISOString(),
+              evidence: [],
+              error: {
+                class: "incomplete_evidence",
+                code: "OPENCODE_MALFORMED_JSON",
+                message: `OpenCode emitted ${state.malformedEvents} malformed JSON event(s)`,
+                retryable: false,
+                correlation
+              }
+            });
+          } else {
+            this.finish(state, correlation, {
+              kind: status.exitCode === 0 ? "succeeded" : "failed",
+              correlation,
+              reportedAt: new Date().toISOString(),
+              evidence: [],
+              error: status.exitCode === 0
+                ? null
+                : {
+                    class: "permanent",
+                    code: "OPENCODE_EXIT",
+                    message: truncate(
+                      `OpenCode exited with status ${status.exitCode}: ${state.stderr.join("").trim()}`,
+                      MAX_STDERR
+                    ),
+                    retryable: false,
+                    correlation
+                  }
+            });
+          }
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+    } catch (cause) {
+      this.finish(state, correlation, {
+        kind: "inconclusive",
+        correlation,
+        reportedAt: new Date().toISOString(),
+        evidence: [],
+        error: {
+          class: "ambiguous",
+          code: "OPENCODE_OWNER_LOST",
+          message: cause instanceof Error ? cause.message : "OpenCode owner was lost",
+          retryable: false,
+          correlation
+        }
+      });
+    }
+  }
+
+  private controlledEnvironment(): Readonly<Record<string, string>> {
+    const inheritedKeys = [
+      "SystemRoot", "ComSpec", "Path", "TEMP", "TMP", "APPDATA",
+      "LOCALAPPDATA", "USERPROFILE", "HOMEDRIVE", "HOMEPATH",
+      "PROGRAMDATA", "PROGRAMFILES", "PROGRAMFILES(X86)"
+    ];
+    const environment: Record<string, string> = {};
+    for (const key of inheritedKeys) {
+      const value = process.env[key];
+      if (value) environment[key] = value;
+    }
+    Object.assign(environment, this.options.environment ?? {});
+    return environment;
   }
 
   private finish(state: ProcessState, correlation: Correlation, outcome: TerminalOutcome): void {
