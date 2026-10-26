@@ -1,7 +1,8 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import type { AcceptanceRecord } from "../shared/domain";
 import { PersistenceError } from "./database";
+import { appendDurableEvent } from "./events";
 
 export class AcceptanceRepository {
   public constructor(private readonly database: Database.Database) {}
@@ -20,20 +21,13 @@ export class AcceptanceRepository {
              VALUES (?, ?, ?, ?, ?)`
           )
           .run(randomUUID(), runId, decision.decision, decision.reason, evaluatedAt);
-        const payload = JSON.stringify({ runId, decision, evaluatedAt });
-        const previous = this.database
-          .prepare("SELECT event_hash FROM audit_events ORDER BY created_at DESC LIMIT 1")
-          .get() as { event_hash: string } | undefined;
-        const eventHash = createHash("sha256")
-          .update(`${previous?.event_hash ?? ""}acceptance.evaluated${payload}${evaluatedAt}`)
-          .digest("hex");
-        this.database
-          .prepare(
-            `INSERT INTO audit_events
-              (id, event_type, payload, previous_hash, event_hash, created_at)
-             VALUES (?, 'acceptance.evaluated', ?, ?, ?, ?)`
-          )
-          .run(randomUUID(), payload, previous?.event_hash ?? null, eventHash, evaluatedAt);
+        appendDurableEvent(
+          this.database,
+          "acceptance.evaluated",
+          { runId, decision, evaluatedAt },
+          evaluatedAt,
+          { correlation: { runId }, idempotencyKey: `acceptance.evaluated:${runId}:${evaluatedAt}` }
+        );
       })();
     } catch (error) {
       throw new PersistenceError("Acceptance decision persistence failed", { cause: error });

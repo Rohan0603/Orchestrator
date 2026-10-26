@@ -7,8 +7,8 @@
   "scripts": {
     "build:native-helper": "node scripts/build-native-helper.mjs",
     "build": "tsc --build && node scripts/copy-renderer-assets.mjs",
-    "test": "npm run build:native-helper && tsc -p tsconfig.test.json && node --test scripts/run-electron-tests.test.mjs && node scripts/run-electron-tests.mjs --expected=13 dist-test/tests/deterministic.test.js && node scripts/run-electron-tests.mjs --expected=4 dist-test/tests/conformance.test.js && node scripts/run-electron-tests.mjs --expected=9 dist-test/tests/execution.test.js && node scripts/run-electron-tests.mjs --expected=11 dist-test/tests/sqlite-runtime.test.js && node scripts/run-electron-tests.mjs --expected=1 dist-test/tests/ipc-security.test.js && node scripts/run-electron-tests.mjs --expected=1 dist-test/tests/ui-core.test.js && node scripts/run-electron-tests.mjs --expected=10 dist-test/tests/native-ownership.test.js && node scripts/run-electron-tests.mjs --expected=1 dist-test/tests/owned-fixture.test.js && node scripts/run-electron-tests.mjs --expected=2 dist-test/tests/github-coderabbit.test.js",
-    "package:win": "npm run build:native-helper && npm run build && electron-packager . Orchestrator --platform=win32 --arch=x64 --out=out --overwrite --asar --extra-resource=dist-native\\job-object-helper.exe",
+    "test": "npm run build:native-helper && tsc -p tsconfig.test.json && node --test scripts/run-electron-tests.test.mjs && node scripts/run-electron-tests.mjs --expected=13 dist-test/tests/deterministic.test.js && node scripts/run-electron-tests.mjs --expected=5 dist-test/tests/conformance.test.js && node scripts/run-electron-tests.mjs --expected=9 dist-test/tests/execution.test.js && node scripts/run-electron-tests.mjs --expected=14 dist-test/tests/sqlite-runtime.test.js && node scripts/run-electron-tests.mjs --expected=1 dist-test/tests/ipc-security.test.js && node scripts/run-electron-tests.mjs --expected=1 dist-test/tests/ui-core.test.js && node scripts/run-electron-tests.mjs --expected=10 dist-test/tests/native-ownership.test.js && node scripts/run-electron-tests.mjs --expected=1 dist-test/tests/owned-fixture.test.js && node scripts/run-electron-tests.mjs --expected=3 dist-test/tests/github-coderabbit.test.js",
+    "package:win": "npm run build:native-helper && npm run build && electron-packager . Orchestrator --platform=win32 --arch=x64 --out=out --overwrite --asar --extra-resource=dist-native/job-object-helper.exe",
     "start": "electron ."
   },
   "dependencies": {
@@ -18,11 +18,11 @@
     "@electron/packager": "^20.3.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.8.0",
-    "electron": "^44.9.0",
+    "electron": "^44.9.3",
     "typescript": "^5.9.3"
   },
   "allowScripts": {
-    "electron@44.9.0": true,
+    "electron@44.9.3": true,
     "better-sqlite3@12.11.1": true
   }
 }

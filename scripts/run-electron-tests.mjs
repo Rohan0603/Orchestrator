@@ -74,14 +74,16 @@ export async function runElectronTests({
   return { ...result, passed: evaluateRun({ ...result, expected }) };
 }
 
-const [expectedArgument, testFile] = process.argv.slice(2);
+const timeoutArgument = process.argv.find((argument) => argument.startsWith("--timeout="));
+const [expectedArgument, testFile] = process.argv.slice(2).filter((argument) => !argument.startsWith("--timeout="));
 const expected = Number(expectedArgument?.replace("--expected=", ""));
+const timeoutMs = timeoutArgument ? Number(timeoutArgument.slice("--timeout=".length)) : 120_000;
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))) {
-  if (!Number.isInteger(expected) || expected < 1 || !testFile) {
-    console.error("Usage: node scripts/run-electron-tests.mjs --expected=N test-file");
+  if (!Number.isInteger(expected) || expected < 1 || !testFile || !Number.isInteger(timeoutMs) || timeoutMs < 1) {
+    console.error("Usage: node scripts/run-electron-tests.mjs --expected=N [--timeout=MS] test-file");
     process.exit(2);
   }
-  const result = await runElectronTests({ testFile, expected });
+  const result = await runElectronTests({ testFile, expected, timeoutMs });
   if (!result.passed) {
     console.error(
       `Electron suite failed: exitCode=${result.exitCode ?? "unknown"} ` +

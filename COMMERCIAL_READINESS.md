@@ -81,7 +81,7 @@ and [validation evidence](docs/VALIDATION_EVIDENCE.md).
 | CR-03 | Electron security and IPC boundary / Critical | Startup inspection, IPC sender/payload tests, renderer privilege tests, CSP review | Renderer remains sandboxed, isolated, Node-disabled, and narrow-API only | Static source review confirms flags/CSP/sender and payload guards; runtime checks not run | P0-C record below | implemented-not-validated | `7edc5d2` / `0.1.0` | Run security-focused validation; preserve main-process ownership |
 | CR-04 | Policy, risk, exact approval / Critical | Deterministic unit/integration cases for decisions, expiry, context changes, one-shot consumption, persistence failure | Fail closed; no mismatched, expired, consumed, or prohibited action proceeds | Pure policy/approval cases pass; persistence-error and transactional consumption tests blocked by native SQLite readiness | P0.2 record below | implemented-not-validated | `ad8e663` / `0.1.0` | Run SQLite-backed transaction and failure tests after native readiness |
 | CR-05 | Dispatch idempotency and evidence provenance / Critical | Deterministic dispatch/event/evidence cases plus persistence failure cases | Duplicate or uncertain dispatch is blocked; invalid evidence cannot satisfy acceptance | Pure route/progress/evidence cases pass; durable idempotency and cursor tests blocked by native SQLite readiness | P0.2 record below | implemented-not-validated | `ad8e663` / `0.1.0` | Run SQLite-backed dispatch and evidence tests after native readiness |
-| CR-06 | Harness capability and route identity / Critical | Authorized adapter conformance trials against every mandatory capability | Mandatory gaps block; provider/model identity and fallback are explicit | OpenCode CLI JSON provisionally qualified; SDK/server and ACP unresolved | `experiments/results/real-opencode-durable/` | blocked | `f1958a2` / `0.1.0` | Keep release blocked until ownership/cancellation and independent review gates clear |
+| CR-06 | Harness capability and route identity / Critical | Authorized freellmapi adapter conformance trials against every mandatory capability | Mandatory gaps block; provider/model identity and fallback are explicit | Generic OpenAI-compatible adapter implemented; live freellmapi qualification pending | `src/harness/openai-compatible-adapter.ts`, `experiments/runners/run-freellmapi-smoke.mjs` | blocked | current / `0.1.0` | Keep release blocked until endpoint, ownership/cancellation, and independent review gates clear |
 | CR-07 | Cancellation, deadlines, restart, recovery / Critical | Authorized fault, process-ownership, restart, timeout, disk/persistence failure exercises | Unknown state remains recovery-required; unsafe redispatch is prevented | Not implemented/validated end-to-end | None | blocked | `7edc5d2` / `0.1.0` | Implement remaining lifecycle/recovery behavior, then exercise |
 | CR-08 | Dependency, licensing, packaging, installation / High | `npm ls`; `npm audit --json`; package license metadata; native artifact inspection; clean Windows install | Dependencies acceptable; install/startup reproducible; no unsafe scripts/config | MIT/Apache direct licenses recorded; 2 high and 4 moderate vulnerabilities; Electron and SQLite native binaries absent; packaging not run | P0-D record below | blocked | `7edc5d2` / `0.1.0` | Do not upgrade/remediate without authorization; resolve native install and audit gates |
 | CR-09 | Regression and release qualification / High | Repeatable deterministic suite, release checklist, clean-machine rerun | Required suite passes at pinned commit; failures retained and triaged | Nine pure deterministic tests pass; clean-machine, runtime, packaging, and release qualification remain unvalidated | P0.2 record below | implemented-not-validated | `ad8e663` / `0.1.0` | Expand after native readiness; run clean-machine release qualification |
@@ -1129,10 +1129,10 @@ Commercial readiness remains **BLOCKED** by process ownership/cancellation,
 sender-forgery qualification, acceptance verification, live adapter/provider
 qualification, clean-machine installation, signing, and independent review.
 
-OpenCode `1.19.0` is detectable on the development machine. The current
-CLI-JSON route and three durable free-model trials are recorded below; SDK/API,
-independent review, and cancellation remain separate gates. The historical
-audit point above remains **NOT TESTED/BLOCKED**.
+The freellmapi OpenAI-compatible route is implemented through the project-owned
+adapter. The endpoint smoke trial, independent review, and provider-side
+cancellation remain separate gates. The historical audit point above remains
+**NOT TESTED/BLOCKED**.
 
 ## Prioritized remediation plan
 
@@ -1148,9 +1148,9 @@ audit point above remains **NOT TESTED/BLOCKED**.
 4. **P0 — Complete recovery ownership.** Implement and validate cancellation,
    process ownership, deadlines, restart reconciliation, disk/persistence
    failure handling, and recovery-required dispatch blocking.
-5. **P1 — Build adapter qualification evidence.** Compare OpenCode, ACP, and
-   approved alternatives only through authorized conformance trials. Keep
-   candidate status unqualified until all mandatory checks pass.
+5. **P1 — Build adapter qualification evidence.** Run authorized freellmapi
+   conformance trials against the generic OpenAI-compatible route. Keep the
+   route unqualified until all mandatory checks pass.
 6. **P1 — Resolve release hygiene.** Inventory vulnerabilities and licenses,
    document native dependency prerequisites, and validate clean-machine
    installation and packaging under separate authorization.
@@ -1189,7 +1189,7 @@ record one call.
 | Durable intent count and actual fixture dispatch count | 3 scenarios verified | **PASS** |
 | Windows process ownership, graceful/forced cancellation | No implementation or runtime evidence | **BLOCKED** |
 | Real second-WebContents sender-forgery exercise | Safe supported fixture still unavailable | **UNVERIFIED** |
-| OpenCode/provider-backed worker | No route invoked; no configuration changed | **BLOCKED / NOT TESTED** |
+| freellmapi/provider-backed worker | No route invoked; no configuration changed | **BLOCKED / NOT TESTED** |
 | Packaged executable startup | Application Control block remains | **BLOCKED** |
 
 The recovery test proves local durable reconciliation only. It does not prove
@@ -1223,7 +1223,7 @@ fixture currently exposes the production preload API to those contexts.
 | Subframe adversarial IPC | Frame-enumeration fixture timed out before obtaining a stable child-frame handle; sandboxed subframes do not receive production preload API | **UNVERIFIED** |
 | Windows Job Object ownership and descendant termination | No supported project-local API/binding | **BLOCKED** |
 | Graceful 30-second plus 5-second forced cancellation | Ownership prerequisite absent | **BLOCKED** |
-| OpenCode executable readiness | `1.19.0`; CLI available; no route invoked or config changed | **BLOCKED / NOT TESTED** |
+| freellmapi endpoint readiness | Endpoint not configured; no route invoked or config changed | **BLOCKED / NOT TESTED** |
 
 Final regression for this pass: `npm test` passed **25/25** (10
 deterministic, 2 conformance, 5 execution/restart, 7 SQLite, 1 real IPC);
@@ -1263,11 +1263,10 @@ Application Control block.
 
 ## Real-worker qualification update
 
-Commits `5f2f132` and `f1958a2` add and exercise `opencode-cli-json` for
-OpenCode `1.19.0` using free model `opencode/mimo-v2.6-flash-free`. Three
-durable trials prove dispatch intent, real file changes, diff capture,
-deterministic verification, and explicit blocked acceptance. CLI JSON is
-provisionally supported. SDK/server and ACP remain unresolved.
+The current implementation adds and tests the freellmapi OpenAI-compatible
+adapter. The adapter proves request construction, SSE parsing, progress,
+usage capture, terminal outcomes, and explicit blocked cancellation/restart
+capabilities. No configured live endpoint trial has run yet.
 
 This evidence does not clear commercial gates: Windows process ownership and
 cancellation are blocked, independent review is unavailable, and clean-machine,
@@ -1281,6 +1280,33 @@ Installed production dependencies are Node `v24.19.0`, Electron `44.9.0`,
 `child_process` exposes process spawning but not `CreateJobObject`,
 `AssignProcessToJobObject`, `IsProcessInJob`, or `TerminateJobObject`.
 Microsoft Job Objects documentation confirms those Win32 calls are required
-to establish and terminate owned process groups. Therefore OpenCode
-cancellation remains explicitly unsupported/unverified; no PID heuristic or
-unsafe termination path was added.
+to establish and terminate owned process groups. Therefore freellmapi
+provider-side cancellation remains explicitly unsupported/unverified; no PID
+heuristic or unsafe termination path was added.
+
+## Completion attempt — 2026-10-26
+
+This section records the latest authorized local implementation and validation
+attempt. It does not override the historical records above or convert self-
+validation into independent review.
+
+- Electron was upgraded to `44.9.3`; `npm audit --json` reports zero findings.
+- Durable audit/outbox events now include correlation and idempotency metadata.
+- Task status transitions are validated and audited transactionally.
+- GitHub Project Status synchronization maps Orchestrator task states to
+  single-select options when a linked Status field exists.
+- The freellmapi adapter now supports generic OpenAI-compatible HTTP/SSE
+  execution, usage telemetry, and secret-safe environment configuration.
+- Adapter cancellation deliberately reports remote termination as unverified;
+  local request abortion is not treated as provider ownership evidence.
+- Provider session-level restart reconciliation remains unimplemented because
+  the generic API does not provide a qualified status/reconnect contract.
+
+The freellmapi smoke runner is retained as the only live-provider experiment
+path. Until it runs against a configured endpoint, no acceptance or
+production-route qualification is claimed.
+
+Commercial release remains blocked by independent review, provider session-level
+restart reconciliation, protocol comparison, clean-machine installation,
+signing/Application Control qualification, production outbox publication, and
+release authorization.

@@ -16,8 +16,7 @@ worker cancellation.
 
 ## Blocked or unvalidated
 
-- OpenCode CLI JSON is provisionally qualified; SDK/server and ACP remain
-  unqualified.
+- freellmapi OpenAI-compatible HTTP/SSE is implemented but not live-qualified.
 - Windows process ownership and verified cancellation are not qualified.
 - Independent review execution and repair comparison are unavailable.
 - Backup/restore integrity now passes for a disposable SQLite database;
@@ -26,20 +25,48 @@ worker cancellation.
 - Nondeterministic task economics and protocol comparisons are not measured.
 - Windows packaging command passed, but clean-machine launch, signing, and
   Application Control compatibility are not validated.
-- Experiment raw-record and summary runners are executable; three live durable
-  CLI JSON trials are retained under `experiments/results/real-opencode-durable/`.
+- Experiment raw-record and summary runners are executable; the freellmapi smoke
+  runner is pending a configured endpoint.
 
 Do not convert this status into a release recommendation. See
 `COMMERCIAL_READINESS.md` for gate tracking.
 
 ## Real-worker update
 
-OpenCode `1.19.0` CLI JSON route is provisionally supported through
-`opencode-cli-json` and free model `opencode/mimo-v2.6-flash-free`. Three
-independent durable trials completed on disposable Git fixtures. All persisted
-dispatch intent, real file changes, diff evidence, verifier output, and blocked
-acceptance. Trial r7 also records usage telemetry.
+The freellmapi OpenAI-compatible adapter is implemented through
+`src/harness/openai-compatible-adapter.ts`. It has deterministic parser and
+streaming tests, but no configured endpoint trial has completed.
 
-This does not clear research-MVP completion. SDK/server and ACP are unresolved;
-process ownership/cancellation and independent review remain blocked. Overall
-status stays **INCOMPLETE / BLOCKED**.
+This does not clear research-MVP completion. Provider-side cancellation,
+restart reconciliation, artifact provenance, and independent review remain
+blocked. Overall status stays **INCOMPLETE / BLOCKED**.
+
+## Completion attempt — 2026-10-26
+
+The current checkout now has zero npm audit findings under Electron `44.9.3`.
+The native ownership fixture completed its local process-tree qualification.
+This does not qualify freellmapi provider-side ownership or cancellation.
+
+This is stronger runtime evidence, but not commercial acceptance: the primary
+execution still ended in `recovery_required` at the deadline, the production
+manifest remains conservative, and no independent reviewer was available.
+Restart reconciliation for a real provider, protocol comparison, clean-machine
+installation, signing/Application Control, and independent review remain
+blocked or unvalidated.
+
+## Blocker follow-up — current pass
+
+The native ownership fixture remains separate from the freellmapi HTTP adapter.
+Provider session-level restart reconciliation remains unimplemented by design:
+the generic API does not provide a qualified status/reconnect contract.
+
+## Provider replacement update — 2026-10-26
+
+The current implementation target is freellmapi through the generic
+OpenAI-compatible `/v1/chat/completions` route. The new adapter supports
+streamed progress, terminal outcomes, usage capture, local request abort, and
+secret-safe environment configuration. No freellmapi endpoint was configured
+in this workspace during the implementation pass, so live endpoint behavior,
+remote cancellation, restart reconciliation, and artifact provenance remain
+unverified. No alternate provider or client route is retained in the current
+implementation.

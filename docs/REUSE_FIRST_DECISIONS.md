@@ -16,7 +16,7 @@ Research sources reviewed:
 | SQLite persistence | `USE_EXISTING` | `better-sqlite3`, explicit migrations, transactions, backup API | Existing dependency covers synchronous transactions, migrations, and disposable backup tests. |
 | Test execution | `USE_EXISTING` | Node `node:test` plus Electron test processes | Existing suite covers deterministic, conformance, execution, SQLite, IPC, and UI paths without another runner. |
 | Windows process ownership | `DEFER` | Windows Job Objects are the platform mechanism; Node `ChildProcess` is only the direct child handle | Reviewed `@vscode/windows-process-tree` 0.8.0 (MIT, maintained, native Toolhelp32 parent-PID tree only; no Job Object ownership or termination) and `node-windows-process` 0.1.4 (MIT, last release 2022; single-PID liveness check only). Neither provides `CreateJobObject`, `AssignProcessToJobObject`, `TerminateJobObject`, or verified ownership. No suitable maintained binding was established; native integration needs separate authorization and implementation evidence. |
-| Worker protocol | `ADOPT` | Project-owned adapter contract with OpenCode CLI JSON adapter | Existing adapter is the only route with retained durable trials; SDK/server and ACP remain unqualified. |
+| Worker protocol | `ADOPT` | Project-owned adapter contract with freellmapi OpenAI-compatible HTTP/SSE adapter | Generic `/v1/chat/completions` is the sole provider route; live endpoint qualification remains pending. |
 | Packaging | `USE_EXISTING` | `@electron/packager` | Existing package script creates the Windows artifact; signing and clean-machine launch remain separate gates. |
 | Logging and audit | `USE_EXISTING` | Existing explicit audit/evidence persistence and `console.error` boundary logging | No evidence shows a new logging framework would improve MVP correctness without added runtime cost. |
 
@@ -26,8 +26,8 @@ Research sources reviewed:
   existing guards are test-covered.
 - ORM or second database: rejected; SQLite is authoritative and current
   repositories/migrations are sufficient.
-- ACP and OpenCode SDK/server: deferred; documented protocol surfaces are not
-  qualification evidence and would expand scope without a current use case.
+- Additional provider protocols: deferred; they would expand scope without a
+  current use case.
 - Native process-management package or FFI: deferred; reviewed candidates do not
   provide Job Objects, and a new native addon would require Electron ABI builds,
   Windows fault tests, packaging, and separate authorization.

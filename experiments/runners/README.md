@@ -16,23 +16,17 @@ Regenerate a derived summary from retained raw records:
 node experiments/runners/summarize-results.mjs --results experiments/results --output experiments/reports/TRIAL_SUMMARY.md
 ```
 
-Run real OpenCode CLI JSON adapter against disposable Git fixture:
+Run the generic freellmapi/OpenAI-compatible smoke trial. This requires a
+running freellmapi endpoint and keeps the API key out of the trial record:
 
 ```text
 npm run build
-node experiments/runners/run-opencode-cli.mjs --fixture <git-dir> --model opencode/mimo-v2.6-flash-free --output <new-json> --source-revision <commit>
+set ORCHESTRATOR_OPENAI_BASE_URL=http://127.0.0.1:31415/v1
+set ORCHESTRATOR_OPENAI_API_KEY=<secret>
+set ORCHESTRATOR_OPENAI_MODEL=auto
+node experiments/runners/run-freellmapi-smoke.mjs --output <new-json> --source-revision <commit>
 ```
 
-This runner captures route identity, redacted invocation arguments, terminal
-status, usage when reported, diff hash/content, verifier result, and blocked
-review/acceptance status. It never claims cancellation capability.
-
-Run through SQLite-authoritative durable dispatch in Electron:
-
-```text
-npm run build
-electron experiments/runners/run-opencode-durable.mjs --fixture <git-dir> --model opencode/mimo-v2.6-flash-free --output <new-json> --source-revision <commit>
-```
-
-This path persists dispatch intent, progress, captured diff evidence, and the
-orchestrator acceptance decision. It still blocks acceptance without review.
+The smoke trial validates the generic `/chat/completions` request, SSE parsing,
+usage capture, and terminal outcome only. It does not qualify remote
+cancellation ownership, artifact provenance, or restart reconciliation.

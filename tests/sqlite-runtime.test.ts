@@ -6,6 +6,7 @@ import test from "node:test";
 import Database from "better-sqlite3";
 import { createDispatchRecord, validateProgressEvent } from "../src/dispatch/dispatch-contract";
 import { DispatchRepository } from "../src/persistence/dispatch-repository";
+import { EventRepository } from "../src/persistence/events";
 import { backupDatabase } from "../src/persistence/backup";
 import { openDatabase, PersistenceError } from "../src/persistence/database";
 import { applyMigrations } from "../src/persistence/migrations";
@@ -35,7 +36,7 @@ function seedRun(database: Database.Database, taskId: string) {
       `INSERT INTO runs (id, task_id, state, route_id, recovery_state, created_at)
        VALUES (?, ?, 'awaiting_approval', ?, 'none', ?)`
     )
-    .run(runId, taskId, "local-opencode", "2026-01-01T00:00:00.000Z");
+    .run(runId, taskId, "local-freellmapi", "2026-01-01T00:00:00.000Z");
   database
     .prepare(
       `INSERT INTO attempts (id, run_id, outcome, worker_report, created_at)
@@ -61,7 +62,7 @@ const action = {
 };
 
 const route = {
-  routeId: "local-opencode",
+  routeId: "local-freellmapi",
   provider: { state: "known" as const, name: "provider" },
   model: { state: "known" as const, name: "model" },
   reportedBy: "adapter" as const
@@ -78,9 +79,9 @@ function scalar<T extends Record<string, unknown>>(
 test("real SQLite creates schema, enables foreign keys, and reruns migrations", () => {
   withDatabase((database) => {
     assert.equal(database.pragma("foreign_keys", { simple: true }), 1);
-    assert.equal(scalar<{ version: number }>(database, "SELECT version FROM schema_version").version, 9);
+    assert.equal(scalar<{ version: number }>(database, "SELECT version FROM schema_version").version, 10);
     assert.doesNotThrow(() => applyMigrations(database));
-    assert.equal(scalar<{ version: number }>(database, "SELECT version FROM schema_version").version, 9);
+    assert.equal(scalar<{ version: number }>(database, "SELECT version FROM schema_version").version, 10);
     for (const table of ["tasks", "approvals", "policy_decisions", "dispatch_intents", "evidence_records"]) {
       assert.ok(
         database.prepare(
@@ -137,6 +138,114 @@ test("real SQLite transaction rollback leaves no partial row", () => {
   });
 });
 
+test("durable events atomically enter audit and outbox, then publish once", () => {
+  withDatabase((database) => {
+    const events = new EventRepository(database);
+    const event = events.append(
+      "test.created",
+      { value: 1 },
+      "2026-01-01T00:00:00.000Z",
+      { correlation: { taskId: "task-1" }, idempotencyKey: "test-1" }
+    );
+    assert.deepEqual(events.pending(), [{
+      id: event.id,
+      eventId: event.id,
+      eventType: "test.created",
+      payload: JSON.stringify({ value: 1 }),
+      publishedAt: null,
+      attemptCount: 0,
+      nextAttemptAt: "2026-01-01T00:00:00.000Z",
+      createdAt: "2026-01-01T00:00:00.000Z"
+    }]);
+    assert.deepEqual(events.append(
+      "test.created",
+      { value: 1 },
+      "2026-01-01T00:00:05.000Z",
+      { correlation: { taskId: "task-1" }, idempotencyKey: "test-1" }
+    ), event);
+    assert.throws(
+      () => events.append(
+        "test.created",
+        { value: 2 },
+        "2026-01-01T00:00:05.000Z",
+        { correlation: { taskId: "task-1" }, idempotencyKey: "test-1" }
+      ),
+      /idempotency key reused/
+    );
+    assert.deepEqual(
+      scalar<{ correlation_json: string; idempotency_key: string }>(
+        database,
+        "SELECT correlation_json, idempotency_key FROM audit_events WHERE id = ?",
+        event.id
+      ),
+      { correlation_json: JSON.stringify({ taskId: "task-1" }), idempotency_key: "test-1" }
+    );
+    events.recordAttempt(event.id, "2099-01-01T00:00:00.000Z");
+    assert.equal(events.pending().length, 0);
+    assert.equal(events.pending(100, "2099-01-01T00:00:01.000Z")[0].attemptCount, 1);
+    events.markPublished(event.id, "2026-01-01T00:01:00.000Z");
+    assert.equal(events.pending().length, 0);
+    assert.doesNotThrow(() => events.markPublished(event.id));
+    assert.equal(
+      scalar<{ count: number }>(database, "SELECT count(*) AS count FROM audit_events").count,
+      1
+    );
+  });
+});
+
+test("unpublished events survive database restart and rollback as one unit", () => {
+  const directory = mkdtempSync(join(tmpdir(), "orchestrator-outbox-restart-"));
+  const path = join(directory, "events.db");
+  let database = openDatabase(path);
+  try {
+    const events = new EventRepository(database);
+    const event = events.append("restart.event", { value: 1 }, "2026-01-01T00:00:00.000Z");
+    assert.throws(() => {
+      database.transaction(() => {
+        events.recordAttempt(event.id, "2026-01-02T00:00:00.000Z");
+        throw new Error("rollback retry");
+      })();
+    }, /rollback retry/);
+    database.close();
+    database = openDatabase(path);
+    const restarted = new EventRepository(database);
+    assert.equal(restarted.pending(100, "2026-01-01T00:00:01.000Z")[0].attemptCount, 0);
+    assert.equal(restarted.pending(100, "2026-01-01T00:00:01.000Z")[0].eventId, event.id);
+  } finally {
+    if (database.open) database.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("task status transitions are explicit and durable", () => {
+  withDatabase((database) => {
+    const tasks = new TaskRepository(database);
+    const task = tasks.create({
+      title: "Transition task",
+      description: "Validate task lifecycle",
+      acceptanceCriteria: ["transition"],
+      riskTier: 1
+    });
+    assert.equal(tasks.updateStatus(task.id, "planned").status, "planned");
+    assert.equal(tasks.updateStatus(task.id, "completed").status, "completed");
+    assert.throws(
+      () => tasks.updateStatus(task.id, "intake"),
+      (error: unknown) =>
+        error instanceof PersistenceError &&
+        error.message === "Task status update failed" &&
+        error.cause instanceof Error &&
+        error.cause.message === "Invalid task transition: completed -> intake"
+    );
+    assert.equal(
+      scalar<{ count: number }>(
+        database,
+        "SELECT count(*) AS count FROM outbox WHERE event_type = 'task.state_changed'"
+      ).count,
+      2
+    );
+  });
+});
+
 test("SQLite backup restores schema and durable task state", async () => {
   const directory = mkdtempSync(join(tmpdir(), "orchestrator-backup-"));
   const sourcePath = join(directory, "source.db");
@@ -159,7 +268,7 @@ test("SQLite backup restores schema and durable task state", async () => {
     const restored = openDatabase(backupPath);
     try {
       assert.equal(new TaskRepository(restored).list()[0].id, task.id);
-      assert.equal(scalar<{ version: number }>(restored, "SELECT version FROM schema_version").version, 9);
+      assert.equal(scalar<{ version: number }>(restored, "SELECT version FROM schema_version").version, 10);
       assert.equal(restored.pragma("foreign_keys", { simple: true }), 1);
     } finally {
       restored.close();
@@ -269,7 +378,7 @@ test("run creation persists intent and restart reconciliation fails closed", () 
       riskTier: 1
     });
     const runs = new RunRepository(database);
-    const created = runs.createRun(task.id, "local-opencode", "2026-01-01T00:00:00.000Z");
+    const created = runs.createRun(task.id, "local-freellmapi", "2026-01-01T00:00:00.000Z");
     assert.deepEqual(runs.listForTask(task.id), [{
       run: created.run,
       attempt: created.attempt

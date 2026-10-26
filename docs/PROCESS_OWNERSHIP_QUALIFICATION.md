@@ -122,7 +122,7 @@ processes, descendant containment under the tested configuration, owned-Job
 termination, process exit, and zero active-process accounting. It does not
 qualify Electron integration, packaged loading, restart reconciliation, or
 production cancellation. The prototype remains isolated from
-`local-execution.ts` and the OpenCode adapter.
+`local-execution.ts` and the freellmapi HTTP adapter.
 
 Controlled failure/cleanup run also passed:
 
@@ -251,8 +251,8 @@ run.recovery_state=reconciled
 
 The packaged process remained alive for eight seconds, then was stopped
 through its exact child PID. No checkout-owned helper remained. This qualifies
-packaged fixture restart reattachment and cleanup. Real OpenCode recovery,
-real-provider cancellation, and independent review remain blocked.
+packaged fixture restart reattachment and cleanup. Real freellmapi recovery,
+provider-side cancellation, and independent review remain blocked.
 
 Reproduction command: `node experiments/runners/run-packaged-restart.mjs`.
 Machine-readable result: `experiments/results/packaged-restart-1792408703493.json`.

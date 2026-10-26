@@ -26,8 +26,8 @@ bounded repair or acceptance/rejection. Unknown or ambiguous outcomes enter
 ## Current implementation boundary
 
 The deterministic fixture adapter exercises lifecycle and persistence behavior.
-OpenCode CLI JSON is provisionally qualified as one live provider route.
-Real Windows process ownership,
-cancellation, independent review execution, and commercial packaging remain
+The freellmapi OpenAI-compatible HTTP/SSE adapter is the sole live provider
+route. Endpoint qualification, provider-side cancellation, restart
+reconciliation, independent review execution, and commercial packaging remain
 separate qualification work. Missing mandatory capability or identity blocks
 dispatch.

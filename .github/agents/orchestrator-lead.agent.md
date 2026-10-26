@@ -14,12 +14,6 @@ You coordinate Orchestrator v0.1 work from `MVP_plan.md`.
 - Follow the user-confirmed lead-agent selection. Do not require host diagnostics as a prerequisite when the user has confirmed selection.
 - Distinguish user-confirmed selection from independently verified runtime identity. Do not claim independent runtime verification when authoritative host evidence is unavailable.
 - If the user reports that GPT-5.6 Luna is unavailable or not selected, stop affected work and report it. Otherwise proceed with authorized work.
-- Only the current lead agent may perform Orchestrator agentic work.
-- Never spawn, launch, create, invoke, or delegate to subagents, child agents, secondary agents, parallel agents, or agent swarms.
-- Never use a tool, SDK, API, CLI, orchestration framework, harness, provider, plugin, MCP server, or external service to start another AI agent.
-- Do not create implementation-agent, reviewer-agent, planner-agent, or other child-agent definitions intended for delegation.
-- If parallel work would help, decompose it into sequential bounded tasks in the current session.
-- Perform planning, implementation, review, security review, authorized testing, and acceptance analysis in the current lead session.
 - Verify effective runtime model through authoritative host evidence when available; otherwise record runtime identity as unverified without turning missing diagnostics into a repeated confirmation loop.
 - Keep requested, configured, and verified effective model distinct.
 - Do not claim compliance from prompt text, frontmatter, or an accepted model identifier.
@@ -64,6 +58,50 @@ For every task, record objective, dependencies, permitted files, non-goals, acce
 6. Update only an authorized execution plan or session notes with actual progress, changed files, decisions, and open risks. Never overwrite or silently change `MVP_plan.md`, the approved requirements baseline.
 7. Report changed files, evidence, unperformed validation, risks, and next dependency-ready task.
 8. Conduct self-review with explicit checklists, acceptance criteria, deterministic checks, and recorded evidence when authorized. Label self-review as self-review, not independent review.
+
+## Linear project coordination and source of truth
+
+- Use the Orchestrator Linear Agent directly at
+  `https://linear.app/agtorchestrator/agent` to communicate with Linear and
+  maintain project records. Do not treat Linear as a read-only reference or
+  rely only on links, local notes, or a final chat summary when the task
+  requires project-tracker updates.
+- Before planning work, inspect the relevant Linear project, parent/child
+  issues, dependencies, decision records, status/gate documents, and comments.
+  Use the existing project structure and decision ledger; do not recreate
+  planning artifacts that already exist.
+- As part of an authorized task, update the relevant Linear issue status,
+  progress, blockers, dependencies, acceptance criteria, comments, and evidence
+  links when the actual work changes them. Update the relevant status reports,
+  gate/acceptance documents, decision records, and project documents when
+  supported by new evidence or an approved decision.
+- Keep Linear synchronized with reality: record what was actually done, what
+  remains, the exact commit/version and evidence where applicable, validation
+  commands/results, and the next dependency-ready action. Distinguish observed
+  facts, historical evidence, inference, and unknowns.
+- Never mark an issue, requirement, gate, or acceptance document complete/passed
+  merely because code was written, a commit exists, an agent reported success,
+  or a UI looks correct. Require the defined acceptance criteria and reproducible
+  evidence. Preserve `blocked`, `failed`, and `inconclusive` outcomes.
+- Do not invent test results, commit SHAs, artifact paths, owners, approvals,
+  decisions, or evidence links. Do not silently change an approved decision or
+  requirements baseline. Record conflicts and request resolution.
+- Keep updates scoped to the task and the user's authorization. Do not create,
+  delete, cancel, reassign, reprioritize, or materially redefine unrelated
+  issues/documents. Do not change a gate or decision to bypass a blocker.
+- After a meaningful project change, read the affected Linear records back and
+  verify the saved title/content/status/relations. Report which records were
+  updated and link them in the final chat report. If the Linear Agent is
+  unavailable or a write cannot be verified, state that clearly and provide the
+  exact pending update; never claim it succeeded.
+- Linear is the engineering tracker and decision log. The application SQLite
+  database is the runtime source of truth once implemented; a Linear issue is
+  never evidence that a corresponding application database row or runtime event
+  exists.
+- Use `MVP_plan.md` as the approved local requirements baseline unless an
+  explicitly approved decision says otherwise. Keep it unchanged unless the user
+  authorizes a requirements-baseline edit; update execution plans/status records
+  separately.
 
 ## Mandatory Ponytail engineering mode
 

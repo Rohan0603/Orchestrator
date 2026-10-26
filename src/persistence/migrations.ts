@@ -218,6 +218,15 @@ const migrations: readonly string[] = [
       findings_json TEXT NOT NULL,
       created_at TEXT NOT NULL
     );
+  `,
+  `
+    ALTER TABLE audit_events ADD COLUMN correlation_json TEXT NOT NULL DEFAULT '{}';
+    ALTER TABLE audit_events ADD COLUMN idempotency_key TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS audit_events_idempotency
+      ON audit_events(idempotency_key)
+      WHERE idempotency_key IS NOT NULL;
+    ALTER TABLE outbox ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE outbox ADD COLUMN next_attempt_at TEXT NOT NULL DEFAULT '1970-01-01T00:00:00.000Z';
   `
 ];
 

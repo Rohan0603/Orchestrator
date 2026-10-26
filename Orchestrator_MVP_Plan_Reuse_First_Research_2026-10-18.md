@@ -76,7 +76,7 @@ diff/evidence. Missing or inconclusive evidence is not a pass.
     review, bounded repair, and acceptance/rejection.
 -   Versioned, project-owned Harness Adapter Contract and capability
     manifest.
--   OpenCode as the initial harness candidate, with interface options
+-   freellmapi as the sole OpenAI-compatible harness route, with the project-owned adapter contract
     compared only to the extent their semantics can be established.
 -   Durable state and restart reconciliation from the first usable
     build.
@@ -163,8 +163,8 @@ evidence. They must not silently edit the worker's changes.
 
 ### 4.4 Harness integration
 
--   OpenCode is the initial harness candidate.
--   ACP, OpenCode server plus official TypeScript SDK/API, and CLI
+-   freellmapi is the sole provider route.
+-   Additional provider protocols and alternate clients
     JSON/interface are comparison candidates only where required
     semantics can be established.
 -   No empirical winner is declared before separately authorized

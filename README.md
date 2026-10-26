@@ -13,7 +13,7 @@ Stage 1 foundation establishes:
 - Typed task domain models and fail-closed lifecycle transition helpers.
 - Main-process task creation/listing and application status operations.
 
-Fixture worker dispatch and one live OpenCode CLI JSON route are implemented.
+Fixture worker dispatch and one live freellmapi OpenAI-compatible route are implemented.
 The live route is provisionally qualified only through the durable experiment
 runners; UI dispatch still uses the deterministic fixture adapter. Git mutation
 through the production UI, independent review execution, repair loops, and
@@ -72,13 +72,14 @@ The orchestrator owns policy, approval, route selection, deadlines,
 cancellation, recovery, verification, review, and acceptance.
 
 `src/harness/conformance.ts` records the qualification checks and required
-evidence. Deterministic fixture checks cover contract behavior. OpenCode
-`1.19.0` CLI JSON is provisionally qualified through
-`src/harness/opencode-cli-adapter.ts` and three durable trials using
-`opencode/mimo-v2.6-flash-free`. ACP and OpenCode server/API remain
-unqualified. Provider credentials are never written to repository evidence.
+evidence. Deterministic fixture checks cover contract behavior. The current
+provider integration is the generic OpenAI-compatible adapter in
+`src/harness/openai-compatible-adapter.ts`; it is configured through
+`ORCHESTRATOR_OPENAI_BASE_URL`, `ORCHESTRATOR_OPENAI_API_KEY`, and
+`ORCHESTRATOR_OPENAI_MODEL`. Provider credentials are never written to
+repository evidence. freellmapi is the only configured provider route.
 
-Qualified CLI adapter facts are retained in trial records with run/attempt
+Qualified freellmapi adapter facts are retained in trial records with run/attempt
 identity, route identity, progress and terminal events, usage telemetry when
 reported, and artifact/evidence provenance. The route is exercised through
 explicit experiment runners, not silently wired into renderer task execution.
@@ -128,7 +129,7 @@ npm start
 After startup, create a task with one or more acceptance criteria. Risk-tier 1
 tasks expose **Run local fixture**. This executes only the deterministic local
 fixture adapter through policy, route, durable dispatch, progress, and terminal
-classification. It does not invoke OpenCode, a provider, a shell, or a real
+classification. It does not invoke freellmapi, another provider, a shell, or a real
 worker. Successful fixture work stops at `verification` until independent
 orchestrator acceptance evidence exists. Each task now displays persisted run
 and attempt history, including recovery-required and disconnected outcomes.
@@ -143,7 +144,7 @@ after fixture launch acknowledgement, and before terminal persistence. Each
 case records `recovery_required` and does not replay its dispatch intent.
 
 `npm test` compiles all suites, then runs eleven deterministic contract tests,
-four adapter conformance tests, five local execution/restart tests, eight real
+five adapter conformance tests, five local execution/restart tests, eight real
 SQLite tests, one real Electron second-WebContents IPC test, and one UI/core Electron test: 30 tests total. The
 Electron-targeted native SQLite
 binding cannot load under ordinary Node.js; use `npm test` rather than invoking
@@ -168,16 +169,23 @@ The package includes the Electron-ABI-149 native SQLite binding. This is an
 unmanaged application directory, not an installer or signed release.
 Clean-machine installation, process cancellation qualification, independent
 review, and production UI wiring for the live adapter remain unverified or
-blocked. The live CLI route is exercised only with the explicit runner:
+blocked. The live route is exercised only with the explicit smoke runner:
 
 ```text
 npm run build
-node experiments/runners/run-opencode-cli.mjs --fixture <git-dir> --model opencode/mimo-v2.6-flash-free --output <new-json> --source-revision <commit>
+node experiments/runners/run-freellmapi-smoke.mjs --output <new-json> --source-revision <commit>
 ```
 
 For SQLite-authoritative durable qualification, use the Electron test harness
 and environment variables documented in
 [experiments/runners/README.md](experiments/runners/README.md).
+
+For the current generic freellmapi/OpenAI-compatible route, first run
+`npx freellmapi setup-generic --url http://127.0.0.1:31415` in the freellmapi
+project, then configure the `ORCHESTRATOR_OPENAI_*` variables and run
+`experiments/runners/run-freellmapi-smoke.mjs`. The smoke runner is deliberately
+experiment-only until remote cancellation, restart reconciliation, and
+artifact provenance are qualified.
 
 ## Research artifacts
 
@@ -190,9 +198,9 @@ and environment variables documented in
 - [Experiment decision report](experiments/DECISION_REPORT.md)
 
 The experiment tree stores pinned configuration, fixture/verifier conventions,
-trial schema, raw-result/report conventions, and three retained live
-OpenCode CLI JSON trial records. It does not claim general provider
-reliability; unavailable prerequisites remain blocked.
+trial schema, raw-result/report conventions, and freellmapi smoke-trial records.
+It does not claim general provider reliability; unavailable prerequisites remain
+blocked.
 
 ## Commercial readiness
 

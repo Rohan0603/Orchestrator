@@ -160,6 +160,7 @@ test("deadline requires verified cancellation before terminal persistence", asyn
       adapter: adapter(null, true)
     });
     assert.equal(result.status, "verification");
+    assert.equal(result.run.state, "verification");
     assert.equal(
       (scenario.database.prepare("SELECT outcome FROM attempts").get() as { outcome: string }).outcome,
       "timed_out"

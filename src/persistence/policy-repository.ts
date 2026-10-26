@@ -1,9 +1,10 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import type { Approval } from "../shared/domain";
 import type { ApprovalRequest, PolicyDecisionRecord, PolicyAction } from "../policy/policy";
 import { actionDigest, checkApproval } from "../policy/policy";
 import { PersistenceError } from "./database";
+import { appendDurableEvent } from "./events";
 
 interface ApprovalRow {
   id: string;
@@ -49,7 +50,7 @@ export class PolicyRepository {
             actionDigest: decision.actionDigest,
             evaluatedAt: decision.evaluatedAt
           });
-        this.appendAudit("policy.decision.recorded", decision);
+        this.appendAudit("policy.decision.recorded", decision, undefined, `policy.decision:${decision.id}`);
       })();
     } catch (error) {
       throw new PersistenceError("Policy decision persistence failed", { cause: error });
@@ -82,7 +83,7 @@ export class PolicyRepository {
             policyVersion: approval.policyVersion,
             expiresAt: approval.expiresAt
           });
-        this.appendAudit("approval.created", approval);
+        this.appendAudit("approval.created", approval, { runId: approval.runId }, `approval.created:${approval.id}`);
       })();
       return approval;
     } catch (error) {
@@ -110,7 +111,7 @@ export class PolicyRepository {
         ...row,
         consumed_at: consumedAt
       });
-      this.appendAudit("approval.consumed", consumed);
+      this.appendAudit("approval.consumed", consumed, { runId: consumed.runId }, `approval.consumed:${consumed.id}`);
       return consumed;
     });
     try {
@@ -121,21 +122,15 @@ export class PolicyRepository {
     }
   }
 
-  private appendAudit(eventType: string, payload: unknown): void {
-    const previous = this.database
-      .prepare("SELECT event_hash FROM audit_events ORDER BY created_at DESC LIMIT 1")
-      .get() as { event_hash: string } | undefined;
-    const createdAt = new Date().toISOString();
-    const serialized = JSON.stringify(payload);
-    const eventHash = createHash("sha256")
-      .update(`${previous?.event_hash ?? ""}${eventType}${serialized}${createdAt}`)
-      .digest("hex");
-    this.database
-      .prepare(
-        `INSERT INTO audit_events
-          (id, event_type, payload, previous_hash, event_hash, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)`
-      )
-      .run(randomUUID(), eventType, serialized, previous?.event_hash ?? null, eventHash, createdAt);
+  private appendAudit(
+    eventType: string,
+    payload: unknown,
+    correlation?: { taskId?: string; runId?: string; attemptId?: string; revision?: number },
+    idempotencyKey?: string
+  ): void {
+    appendDurableEvent(this.database, eventType, payload, undefined, {
+      correlation,
+      idempotencyKey
+    });
   }
 }

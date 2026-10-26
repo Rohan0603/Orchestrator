@@ -79,6 +79,44 @@ test("GitHub issue import, idempotency, status sync, and conflict are durable", 
   database.close();
 });
 
+test("GitHub task sync maps task state to the project Status field", async () => {
+  const database = openDatabase(":memory:");
+  const tasks = new TaskRepository(database);
+  const links = new GitHubRepository(database);
+  const remote = issue("2026-10-18T00:00:00.000Z");
+  let projectUpdate: string[] = [];
+  const port: GitHubPort = {
+    async listIssues() { return [remote]; },
+    async listProjectItems() { return [{ id: "item-1", issue: remote }]; },
+    async listProjectFields() {
+      return [{
+        id: "status-field",
+        name: "Status",
+        options: [
+          { id: "todo", name: "Todo" },
+          { id: "progress", name: "In Progress" },
+          { id: "done", name: "Done" }
+        ]
+      }];
+    },
+    async updateProjectSingleSelect(projectId, itemId, fieldId, optionId) {
+      projectUpdate = [projectId, itemId, fieldId, optionId];
+    },
+    async updateIssue(_repository, _number, state) {
+      return issue("2026-10-18T00:00:01.000Z", state);
+    },
+    async addComment() {}
+  };
+  const service = new GitHubSyncService(port, tasks, links);
+  const imported = await service.importIssue("acme/repo", remote, "project-1", "item-1");
+  tasks.updateStatus(imported.task.id, "planned");
+  await service.syncTask(tasks.get(imported.task.id)!);
+  assert.deepEqual(projectUpdate, ["project-1", "item-1", "status-field", "progress"]);
+  const events = links.listSyncEvents(imported.task.id);
+  assert.match(events.at(-1)?.payload ?? "", /"optionName":"In Progress"/);
+  database.close();
+});
+
 test("CodeRabbit config conflicts fail closed and review loop is bounded", async () => {
   const directory = mkdtempSync(join(tmpdir(), "orchestrator-coderabbit-"));
   writeFileSync(join(directory, "tsconfig.json"), "{}");

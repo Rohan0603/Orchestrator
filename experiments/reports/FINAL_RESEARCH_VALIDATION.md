@@ -4,9 +4,10 @@ Audit date: 2026-10-18. Audited implementation commit: `0fb0070`.
 
 ## Evidence inventory
 
-The deterministic qualification record covers 26 passing tests. Three live
-OpenCode CLI JSON trials are retained below; their task acceptance remains
-blocked because independent review is unavailable.
+The deterministic qualification record covers the configured contract and
+execution tests. The freellmapi live smoke trial is pending; task acceptance
+remains blocked because endpoint qualification and independent review are
+unavailable.
 
 ## Hypothesis outcomes
 
@@ -16,7 +17,7 @@ blocked because independent review is unavailable.
 | H2: durable intent plus uncertain recovery prevents unsafe replay | Provisionally supported | Deterministic crash/restart tests pass; no real worker side effect |
 | H3: mandatory capability/identity checks block unsafe routes | Provisionally supported | Contract and execution tests pass; no live route |
 | H4: review/repair improves quality enough to justify cost | Blocked | No independent reviewer, repair campaign, or telemetry |
-| Protocol choice: CLI JSON vs SDK/server vs ACP | Unresolved | No fair live comparison; prerequisites unavailable |
+| Provider route: OpenAI-compatible HTTP/SSE | Implemented, not qualified | No configured live endpoint trial yet |
 
 ## Sampling and economics
 
@@ -33,14 +34,7 @@ qualified real adapter followed by pinned baseline and comparison trials.
 
 ## Real-worker addendum
 
-Three durable trials now qualify one baseline route:
-OpenCode `1.19.0` CLI JSON with `opencode/mimo-v2.6-flash-free`. All three
-persisted dispatch intent, executed real worker code, changed the fixture,
-captured diff evidence, and passed the deterministic verifier. Acceptance was
-blocked in every trial because no independent reviewer was configured. Trial
-r7 records usage telemetry and cost `0` as provider-reported, not universal
-zero cost.
-
-Updated conclusion: CLI JSON is **provisionally supported**. SDK/server and ACP
-remain unresolved; cancellation/process ownership and independent review keep
-the research MVP **INCOMPLETE / BLOCKED**.
+The freellmapi adapter is **implemented but not yet qualified**. Endpoint
+availability, provider-side cancellation, restart reconciliation, artifact
+provenance, and independent review keep the research MVP
+**INCOMPLETE / BLOCKED**.

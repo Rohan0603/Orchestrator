@@ -78,7 +78,16 @@ export interface AuditEvent {
   readonly payload: string;
   readonly previousHash: string | null;
   readonly eventHash: string;
+  readonly correlation: EventCorrelation;
+  readonly idempotencyKey: string | null;
   readonly createdAt: string;
+}
+
+export interface EventCorrelation {
+  readonly taskId?: string;
+  readonly runId?: string;
+  readonly attemptId?: string;
+  readonly revision?: number;
 }
 
 export interface OutboxRecord {
@@ -86,6 +95,8 @@ export interface OutboxRecord {
   readonly eventType: string;
   readonly payload: string;
   readonly publishedAt: string | null;
+  readonly attemptCount: number;
+  readonly nextAttemptAt: string;
   readonly createdAt: string;
 }
 
@@ -137,6 +148,13 @@ const transitions: Readonly<Record<RunState, readonly RunState[]>> = {
   recovery_required: ["blocked", "ready"]
 };
 
+const taskTransitions: Readonly<Record<TaskStatus, readonly TaskStatus[]>> = {
+  intake: ["planned", "blocked", "completed"],
+  planned: ["blocked", "completed"],
+  blocked: ["planned"],
+  completed: []
+};
+
 export function canTransitionRun(from: RunState, to: RunState): boolean {
   return transitions[from].includes(to);
 }
@@ -144,5 +162,15 @@ export function canTransitionRun(from: RunState, to: RunState): boolean {
 export function assertRunTransition(from: RunState, to: RunState): void {
   if (!canTransitionRun(from, to)) {
     throw new Error(`Invalid run transition: ${from} -> ${to}`);
+  }
+}
+
+export function canTransitionTask(from: TaskStatus, to: TaskStatus): boolean {
+  return taskTransitions[from].includes(to);
+}
+
+export function assertTaskTransition(from: TaskStatus, to: TaskStatus): void {
+  if (!canTransitionTask(from, to)) {
+    throw new Error(`Invalid task transition: ${from} -> ${to}`);
   }
 }

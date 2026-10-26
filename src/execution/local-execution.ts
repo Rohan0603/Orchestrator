@@ -334,8 +334,19 @@ function result(
   progressRejected: number,
   acceptance: AcceptanceRecord | null = null
 ): LocalExecutionResult {
+  const runState: Run["state"] = status === "verification"
+    ? "verification"
+    : status === "rejected"
+      ? "rejected"
+      : status === "recovery_required"
+        ? "recovery_required"
+        : "blocked";
   return {
-    run,
+    run: {
+      ...run,
+      state: runState,
+      recoveryState: status === "recovery_required" ? "recovery_required" : "none"
+    },
     attemptId,
     policy,
     status,

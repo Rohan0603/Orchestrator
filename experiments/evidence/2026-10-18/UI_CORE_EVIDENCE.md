@@ -2,7 +2,7 @@
 
 ## Scope
 
-The renderer uses typed preload IPC only. Live OpenCode remains intentionally
+The renderer uses typed preload IPC only. Live freellmapi remains intentionally
 outside UI scope. Fixture UI labels explicitly state that runs are deterministic
 and do not invoke a provider.
 

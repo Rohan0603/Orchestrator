@@ -7,7 +7,8 @@
 - Filesystem and Git hold source, diffs, and artifacts. A run-owned worktree is operational isolation, not a security boundary.
 - Keep operation loopback-only. Do not add remote access, multi-tenancy, or public service behavior.
 - Default to one active run and one worker. Delegated multi-worker execution and external agents remain disabled in v0.1.
-- OpenCode is an initial harness candidate, not a qualified integration.
+- freellmapi is the sole provider integration; keep the generic OpenAI-compatible
+  route explicit and fail closed until its capabilities are qualified.
 - Maintain a project-owned, versioned harness adapter contract and capability manifest.
 - The orchestrator owns policy, approvals, lifecycle, dispatch, deadlines, retries, recovery, audit, review, and acceptance. Workers execute and report; workers are not acceptance authorities.
 
@@ -29,12 +30,6 @@
 - Follow the user-confirmed lead-agent selection. Do not require host diagnostics as a prerequisite when the user has confirmed selection.
 - Distinguish user-confirmed selection from independently verified runtime identity. Do not claim independent runtime verification when authoritative host evidence is unavailable.
 - If the user reports that GPT-5.6 Luna is unavailable or not selected, stop affected work and report it. Otherwise proceed with authorized work.
-- Only the current lead agent may perform Orchestrator agentic work.
-- Never spawn, launch, create, invoke, or delegate to subagents, child agents, secondary agents, parallel agents, or agent swarms.
-- Never use a tool, SDK, API, CLI, orchestration framework, harness, provider, plugin, MCP server, or external service to start another AI agent.
-- Do not create implementation-agent, reviewer-agent, planner-agent, or other child-agent definitions intended for delegation.
-- If parallel work would help, decompose it into sequential bounded tasks in the current session.
-- Perform planning, implementation, review, security review, authorized testing, and acceptance analysis in the current lead session.
 - Distinguish requested model, configured model, and verified effective runtime model.
 - Verify effective model with authoritative runtime evidence when available; otherwise record runtime identity as unverified without turning missing diagnostics into a repeated confirmation loop.
 - Prompt text, an accepted model identifier, or configuration intent is not runtime evidence.

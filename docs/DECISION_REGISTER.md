@@ -8,7 +8,7 @@
 | Unknown outcome requires recovery | Supported for deterministic path | Recovery tests pass; no automatic replay |
 | Mandatory unverified capability blocks route | Supported for contract path | Route and execution tests pass |
 | Local fixture adapter | Test-only | Deterministic conformance fixture; not a provider qualification |
-| OpenCode/CLI/SDK/ACP winner | Unresolved | No live adapter conformance evidence |
+| freellmapi OpenAI-compatible route | Selected, not qualified | Adapter and conformance tests exist; live endpoint trial is pending |
 | Windows Job Object ownership | Blocked | Supported binding and verified process exercise not established |
 | Independent review effectiveness | Blocked | Independent reviewer/evaluation set unavailable |
 | Commercial readiness | Rejected for current MVP | Readiness gates remain blocked or unvalidated |

@@ -1,9 +1,10 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import type { CancellationReport } from "../harness/adapter-contract";
 import type { Attempt, OwnershipRecord, Run } from "../shared/domain";
 import { assertRunTransition } from "../shared/domain";
 import { PersistenceError } from "./database";
+import { appendDurableEvent } from "./events";
 
 interface RunRow {
   id: string;
@@ -223,7 +224,11 @@ export class RunRepository {
              VALUES (?, ?, ?, ?, ?)`
           )
           .run(attempt.id, attempt.runId, attempt.outcome, attempt.workerReport, attempt.createdAt);
-        this.appendAudit("run.created", { run, attempt });
+        this.appendAudit("run.created", { run, attempt }, {
+          taskId: run.taskId,
+          runId: run.id,
+          attemptId: attempt.id
+        }, `run.created:${run.id}`);
       })();
       return { run, attempt };
     } catch (error) {
@@ -284,7 +289,7 @@ export class RunRepository {
             runId: row.id,
             reason: "Interrupted run requires reconciliation",
             observedAt
-          });
+          }, { runId: row.id }, `run.recovery_required:${row.id}:${observedAt}`);
         }
 
         return rows.map((row) => ({
@@ -320,7 +325,9 @@ export class RunRepository {
                observed_at = excluded.observed_at`
           )
           .run(runId, state, reason, observedAt);
-        this.appendAudit("run.recovery_reconciled", { runId, state, reason, observedAt });
+        this.appendAudit("run.recovery_reconciled", { runId, state, reason, observedAt }, {
+          runId
+        }, `run.recovery_reconciled:${runId}:${observedAt}`);
       })();
     } catch (error) {
       throw new PersistenceError("Recovery outcome persistence failed", { cause: error });
@@ -339,7 +346,14 @@ export class RunRepository {
           .prepare("UPDATE runs SET state = ?, recovery_state = ? WHERE id = ?")
           .run(state, recoveryState, runId);
         if (result.changes !== 1) throw new Error("Run not found");
-        this.appendAudit("run.state_changed", { runId, state, recoveryState });
+        this.appendAudit("run.state_changed", {
+          runId,
+          from: current.state,
+          state,
+          recoveryState
+        }, {
+          runId
+        }, `run.state_changed:${runId}:${current.state}:${state}`);
       })();
     } catch (error) {
       throw new PersistenceError("Run state transition failed", { cause: error });
@@ -379,7 +393,7 @@ export class RunRepository {
           runState,
           recoveryState,
           workerReport
-        });
+        }, { runId: attempt.run_id, attemptId }, `attempt.outcome_recorded:${attemptId}`);
       })();
     } catch (error) {
       throw new PersistenceError("Attempt outcome persistence failed", { cause: error });
@@ -414,21 +428,15 @@ export class RunRepository {
     }
   }
 
-  private appendAudit(eventType: string, payload: unknown): void {
-    const previous = this.database
-      .prepare("SELECT event_hash FROM audit_events ORDER BY created_at DESC LIMIT 1")
-      .get() as { event_hash: string } | undefined;
-    const createdAt = new Date().toISOString();
-    const serialized = JSON.stringify(payload);
-    const eventHash = createHash("sha256")
-      .update(`${previous?.event_hash ?? ""}${eventType}${serialized}${createdAt}`)
-      .digest("hex");
-    this.database
-      .prepare(
-        `INSERT INTO audit_events
-          (id, event_type, payload, previous_hash, event_hash, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)`
-      )
-      .run(randomUUID(), eventType, serialized, previous?.event_hash ?? null, eventHash, createdAt);
+  private appendAudit(
+    eventType: string,
+    payload: unknown,
+    correlation?: { taskId?: string; runId?: string; attemptId?: string; revision?: number },
+    idempotencyKey?: string
+  ): void {
+    appendDurableEvent(this.database, eventType, payload, undefined, {
+      correlation,
+      idempotencyKey
+    });
   }
 }

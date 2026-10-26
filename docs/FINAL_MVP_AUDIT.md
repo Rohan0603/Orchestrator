@@ -64,16 +64,11 @@ See [MVP_ACCEPTANCE_MATRIX](MVP_ACCEPTANCE_MATRIX.md) and
 
 ## Real-worker qualification addendum
 
-Updated through implementation/documentation commit `75f6909` after
-`5f2f132`, `f1958a2`, `090d53a`, `a985051`, and `6429b56`.
-OpenCode `1.19.0` CLI JSON is now implemented and exercised with free route
-`opencode/mimo-v2.6-flash-free` against three disposable Git fixtures
-(`experiments/results/real-opencode-durable/`). Each trial persisted dispatch
-intent before invocation, changed `value.txt`, captured a diff, and passed
-`verify.ps1`. Trial r7 retained provider telemetry: total 18100, input 100,
-output 46, reasoning 34, cost 0.
+Updated through the current implementation pass. The freellmapi
+OpenAI-compatible HTTP/SSE adapter is implemented with deterministic parser,
+streaming, usage, terminal, and secret-safe configuration tests.
 
-CLI JSON baseline is **provisionally supported**, not fully accepted. SDK/server
-and ACP remain untested. Independent review remains unavailable, so all three
-acceptance decisions are explicitly blocked. Windows process ownership and
-cancellation remain blocked; no unsafe termination workaround was used.
+The freellmapi baseline is **implemented but not fully qualified**. No live
+endpoint trial has run in this checkout. Independent review, provider-side
+cancellation, restart reconciliation, and artifact provenance remain blocked;
+no unsafe termination workaround was added.

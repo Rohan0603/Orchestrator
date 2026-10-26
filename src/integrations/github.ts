@@ -173,6 +173,25 @@ export interface GitHubSyncResult {
   readonly action: "imported" | "synced" | "conflict";
 }
 
+interface ProjectStatusUpdate {
+  readonly fieldId: string;
+  readonly optionId: string;
+  readonly optionName: string;
+}
+
+function normalizedLabel(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function projectOptionName(status: Task["status"]): readonly string[] {
+  switch (status) {
+    case "intake": return ["todo", "to do"];
+    case "planned": return ["in progress"];
+    case "blocked": return ["blocked"];
+    case "completed": return ["done", "completed"];
+  }
+}
+
 export class GitHubSyncService {
   public constructor(
     private readonly port: GitHubPort,
@@ -236,6 +255,7 @@ export class GitHubSyncService {
         existing.repository, existing.issueNumber, desiredState
       );
       if (progress) await this.port.addComment(existing.repository, existing.issueNumber, progress);
+      const projectStatus = await this.syncProjectStatus(existing, task);
       const link = {
         ...existing,
         remoteUpdatedAt: updated.updatedAt,
@@ -245,7 +265,11 @@ export class GitHubSyncService {
         lastSyncedAt: new Date().toISOString()
       };
       this.links.linkTask(link);
-      this.links.recordSyncEvent(task.id, "github.synced", updated.updatedAt, { state: desiredState, progress });
+      this.links.recordSyncEvent(task.id, "github.synced", updated.updatedAt, {
+        state: desiredState,
+        progress,
+        projectStatus
+      });
       return { task, link, action: "synced" };
     } catch (error) {
       const message = error instanceof Error ? error.message : "GitHub synchronization failed";
@@ -254,6 +278,28 @@ export class GitHubSyncService {
       this.links.recordSyncEvent(task.id, "github.sync_failed", existing.remoteUpdatedAt, { message });
       throw error;
     }
+  }
+
+  private async syncProjectStatus(
+    link: GitHubTaskLink,
+    task: Task
+  ): Promise<ProjectStatusUpdate | null> {
+    if (!link.projectId || !link.projectItemId) return null;
+    const fields = await this.port.listProjectFields(link.projectId);
+    const statusField = fields.find((field) => normalizedLabel(field.name) === "status");
+    if (!statusField || statusField.options.length === 0) return null;
+    const names = projectOptionName(task.status);
+    const option = statusField.options.find((candidate) => names.includes(normalizedLabel(candidate.name)));
+    if (!option) {
+      throw new Error(`GitHub project Status field has no option for task state '${task.status}'`);
+    }
+    await this.port.updateProjectSingleSelect(
+      link.projectId,
+      link.projectItemId,
+      statusField.id,
+      option.id
+    );
+    return { fieldId: statusField.id, optionId: option.id, optionName: option.name };
   }
 }
 

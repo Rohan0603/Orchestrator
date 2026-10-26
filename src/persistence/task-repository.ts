@@ -2,7 +2,9 @@ import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import type { CreateTaskInput } from "../shared/ipc";
 import type { Task } from "../shared/domain";
+import { assertTaskTransition } from "../shared/domain";
 import { PersistenceError } from "./database";
+import { appendDurableEvent } from "./events";
 
 interface TaskRow {
   id: string;
@@ -75,11 +77,26 @@ export class TaskRepository {
 
   public updateStatus(taskId: string, status: Task["status"]): Task {
     try {
-      const result = this.database.prepare("UPDATE tasks SET status = ? WHERE id = ?").run(status, taskId);
-      if (result.changes !== 1) throw new Error("Task not found");
-      const row = this.database.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId) as TaskRow | undefined;
-      if (!row) throw new Error("Task not found");
-      return fromRow(row);
+      return this.database.transaction(() => {
+        const currentRow = this.database
+          .prepare("SELECT * FROM tasks WHERE id = ?")
+          .get(taskId) as TaskRow | undefined;
+        if (!currentRow) throw new Error("Task not found");
+        assertTaskTransition(currentRow.status, status);
+        const result = this.database
+          .prepare("UPDATE tasks SET status = ? WHERE id = ?")
+          .run(status, taskId);
+        if (result.changes !== 1) throw new Error("Task not found");
+        const task = fromRow({ ...currentRow, status });
+        appendDurableEvent(
+          this.database,
+          "task.state_changed",
+          { taskId, from: currentRow.status, to: status },
+          undefined,
+          { correlation: { taskId } }
+        );
+        return task;
+      })();
     } catch (error) {
       throw new PersistenceError("Task status update failed", { cause: error });
     }

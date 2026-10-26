@@ -12,9 +12,11 @@ import {
 import { ConformanceFixtureAdapter } from "../src/harness/conformance-fixture";
 import { classifyTerminalOutcome, validateProgressEvent } from "../src/dispatch/dispatch-contract";
 import {
-  mergeOpenCodeUsage,
-  parseOpenCodeEvent
-} from "../src/harness/opencode-cli-adapter";
+  mergeOpenAIUsage,
+  OpenAICompatibleAdapter,
+  parseOpenAIStreamLine,
+  readOpenAICompatibleConfig
+} from "../src/harness/openai-compatible-adapter";
 
 const correlation: Correlation = {
   dispatchId: "dispatch",
@@ -168,16 +170,81 @@ test("capability manifests reject duplicate and incomplete declarations", () => 
   assert.equal(blocked.decision, "blocked");
 });
 
-test("OpenCode parser quarantines malformed JSON and preserves missing usage fields", () => {
-  assert.equal(parseOpenCodeEvent("not-json"), null);
-  assert.equal(parseOpenCodeEvent("x".repeat(256 * 1024 + 1)), null);
-  const event = parseOpenCodeEvent('{"part":{"tokens":{"input":3}}}');
-  assert.ok(event);
-  assert.deepEqual(mergeOpenCodeUsage(null, event), {
+test("OpenAI-compatible parser quarantines malformed SSE and preserves missing usage fields", () => {
+  assert.equal(parseOpenAIStreamLine("data: not-json"), null);
+  assert.equal(parseOpenAIStreamLine(`data: ${"x".repeat(256 * 1024 + 1)}`), null);
+  assert.equal(parseOpenAIStreamLine("data: [DONE]"), "done");
+  const chunk = parseOpenAIStreamLine('data: {"usage":{"prompt_tokens":3}}');
+  assert.ok(chunk && chunk !== "done");
+  assert.deepEqual(mergeOpenAIUsage(null, chunk), {
     total: null,
     input: 3,
     output: null,
     reasoning: null,
     cost: null
   });
+});
+
+test("OpenAI-compatible adapter reports streamed progress and terminal outcome", async () => {
+  const encoded = new TextEncoder().encode([
+    'data: {"choices":[{"delta":{"content":"hello"}}]}',
+    "",
+    'data: {"usage":{"prompt_tokens":2,"completion_tokens":1}}',
+    "",
+    "data: [DONE]",
+    "",
+    ""
+  ].join("\n"));
+  let reads = 0;
+  const adapter = new OpenAICompatibleAdapter({
+    baseUrl: "http://127.0.0.1:31415/v1",
+    apiKey: "test-key",
+    model: "auto",
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      body: {
+        getReader: () => ({
+          read: async () => reads++ === 0
+            ? { done: false, value: encoded }
+            : { done: true, value: undefined }
+        })
+      }
+    } as unknown as Response)
+  });
+  const request = {
+    dispatchId: correlation.dispatchId,
+    idempotencyKey: "idempotency-key",
+    authorization: {
+      runId: correlation.runId,
+      attemptId: correlation.attemptId,
+      actionDigest: "digest",
+      approvalId: null,
+      policyVersion: "policy-v1"
+    },
+    taskDescription: "adapter task",
+    deadlineAt: "2099-01-01T00:00:00.000Z",
+    route: adapter.route
+  };
+  const terminal = new Promise((resolve) => {
+    adapter.createRun(request).then(() => {
+      adapter.subscribeTerminal(correlation, resolve);
+    });
+  });
+  const outcome = await terminal;
+  assert.equal((outcome as { kind: string }).kind, "succeeded");
+  assert.deepEqual(adapter.getUsage(correlation), {
+    total: null,
+    input: 2,
+    output: 1,
+    reasoning: null,
+    cost: null
+  });
+  assert.equal(readOpenAICompatibleConfig({
+    ORCHESTRATOR_OPENAI_BASE_URL: "http://127.0.0.1:31415/v1",
+    ORCHESTRATOR_OPENAI_API_KEY: "secret",
+    ORCHESTRATOR_OPENAI_MODEL: "auto"
+  })?.apiKey, "secret");
+  await adapter.close();
 });

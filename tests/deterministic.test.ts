@@ -38,7 +38,7 @@ const action = {
 };
 
 const route: RouteIdentity = {
-  routeId: "local-opencode",
+  routeId: "local-freellmapi",
   provider: { state: "known", name: "provider" },
   model: { state: "known", name: "model" },
   reportedBy: "adapter"
