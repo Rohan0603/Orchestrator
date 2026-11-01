@@ -3,7 +3,50 @@ use std::fs;
 use std::path::Path;
 use thiserror::Error;
 
+pub mod ipc;
+
 pub const PROTOCOL_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 1;
+pub const V1_METHODS: &[&str] = &[
+    "system.health",
+    "system.shutdown",
+    "projects.create",
+    "projects.get",
+    "projects.list",
+    "tasks.create",
+    "tasks.update",
+    "tasks.get",
+    "tasks.list",
+    "tasks.runs.list",
+    "tasks.revisions.list",
+    "tasks.dependencies.add",
+    "tasks.dependencies.list",
+    "workers.register",
+    "skills.install",
+    "mcp.servers.install",
+    "plugins.install",
+    "workers.claim",
+    "leases.heartbeat",
+    "leases.release",
+    "workers.message",
+    "workers.report",
+    "messages.dispatch",
+    "runs.cancel",
+    "runs.reconcile",
+    "policy.evaluate",
+    "approvals.request",
+    "verification.get",
+    "review.request",
+    "acceptance.get",
+    "events.subscribe",
+    "events.replay",
+    "providers.streamTask",
+    "mcp.tools.list",
+    "mcp.tools.call",
+    "plugins.execute",
+    "capabilities.list",
+    "artifacts.get",
+];
 
 #[derive(Debug, Error)]
 pub enum CoreError {
@@ -76,7 +119,7 @@ impl RuntimeConfig {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Capability {
     pub name: &'static str,
@@ -103,88 +146,24 @@ pub fn metadata() -> RuntimeMetadata {
         version: env!("CARGO_PKG_VERSION"),
         build_revision: env!("AGENTCONDUCTOR_BUILD_REVISION"),
         target: env!("AGENTCONDUCTOR_BUILD_TARGET"),
-        capabilities: vec![
-            Capability {
-                name: "system.health",
-                state: "supported",
-                reason: None,
-            },
-            Capability {
-                name: "capabilities.list",
-                state: "supported",
-                reason: None,
-            },
-            Capability {
-                name: "projects.create",
-                state: "unverified",
-                reason: Some(NOT_MIGRATED),
-            },
-            Capability {
-                name: "tasks.create",
-                state: "unverified",
-                reason: Some(NOT_MIGRATED),
-            },
-            Capability {
-                name: "workers.claim",
-                state: "unverified",
-                reason: Some(NOT_MIGRATED),
-            },
-            Capability {
-                name: "leases.heartbeat",
-                state: "unverified",
-                reason: Some(NOT_MIGRATED),
-            },
-            Capability {
-                name: "messages.dispatch",
-                state: "unverified",
-                reason: Some(NOT_MIGRATED),
-            },
-            Capability {
-                name: "runs.cancel",
-                state: "unverified",
-                reason: Some(NOT_MIGRATED),
-            },
-            Capability {
-                name: "runs.reconcile",
-                state: "unverified",
-                reason: Some(NOT_MIGRATED),
-            },
-            Capability {
-                name: "policy.evaluate",
-                state: "unverified",
-                reason: Some(NOT_MIGRATED),
-            },
-            Capability {
-                name: "review.request",
-                state: "unverified",
-                reason: Some(NOT_MIGRATED),
-            },
-            Capability {
-                name: "acceptance.get",
-                state: "unverified",
-                reason: Some(NOT_MIGRATED),
-            },
-            Capability {
-                name: "providers.streamTask",
-                state: "unverified",
-                reason: Some(NOT_MIGRATED),
-            },
-            Capability {
-                name: "mcp.tools.call",
-                state: "unverified",
-                reason: Some(NOT_MIGRATED),
-            },
-            Capability {
-                name: "plugins.execute",
-                state: "unverified",
-                reason: Some(NOT_MIGRATED),
-            },
-            Capability {
-                name: "artifacts.get",
-                state: "unverified",
-                reason: Some(NOT_MIGRATED),
-            },
-        ],
+        capabilities: V1_METHODS
+            .iter()
+            .map(|name| {
+                if matches!(*name, "system.health" | "capabilities.list") {
+                    Capability {
+                        name,
+                        state: "supported",
+                        reason: None,
+                    }
+                } else {
+                    Capability {
+                        name,
+                        state: "unverified",
+                        reason: Some(NOT_MIGRATED),
+                    }
+                }
+            })
+            .collect(),
     }
 }
 

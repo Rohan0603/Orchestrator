@@ -20,16 +20,31 @@ through the production UI, independent review execution, repair loops, and
 cancellation exercises remain unqualified. Minimal restart reconciliation and
 local Windows packaging are implemented but not release-qualified.
 
+## Rust core migration status
+
+The approved target is an Electron + TypeScript application shell and client
+SDK communicating over versioned private local IPC with a Rust
+`orchestrator-core`; Rust is the target authority for orchestration state and
+SQLite WAL. The migration is incremental. The current TypeScript backend
+remains the behavioral and conformance baseline until each Rust service is
+migrated and qualified. ORC-35 supplies the Rust runtime skeleton and ORC-36
+adds the framed stdio protocol and handshake; only health and capability
+queries are implemented by the Rust slice so far. No completion of the target
+architecture is implied by those foundations.
+
 Stage 2 adds source-level policy decisions, risk classification, one-shot
 exact-context approval contracts, and workspace/Git safety contracts. These
 contracts do not execute actions or invoke Git.
 
-## Data ownership
+## Current data ownership and migration target
 
-The Electron main process owns SQLite, filesystem, Git, process, and future
-provider operations. The renderer receives typed projections through preload.
-SQLite is authoritative for structured lifecycle state. Filesystem and Git
-hold source and artifacts; they are not security boundaries.
+In the current TypeScript baseline, the Electron main process owns SQLite,
+filesystem, Git, process, and provider operations. The renderer receives typed
+projections through preload. SQLite is authoritative for structured lifecycle
+state. Filesystem and Git hold source and artifacts; they are not security
+boundaries. During migration, Rust becomes the single logical SQLite writer
+only after the relevant persistence/service cutover and qualification gates;
+the TypeScript baseline is retained until approved cutover.
 
 ## Database and migrations
 

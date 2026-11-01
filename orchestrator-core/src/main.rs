@@ -1,4 +1,5 @@
 use anyhow::Context;
+use orchestrator_core::ipc::{self, ShutdownReason};
 use orchestrator_core::{CoreError, PROTOCOL_VERSION, RuntimeConfig, metadata};
 use serde_json::json;
 use std::env;
@@ -6,8 +7,6 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::io::{AsyncReadExt, Stdin};
-use tokio::signal;
 use tracing_subscriber::EnvFilter;
 
 enum Command {
@@ -15,21 +14,6 @@ enum Command {
     Version,
     Help,
     Serve(Option<PathBuf>),
-}
-
-#[derive(Clone, Copy)]
-enum ShutdownReason {
-    StdinEof,
-    CtrlC,
-}
-
-impl ShutdownReason {
-    fn label(self) -> &'static str {
-        match self {
-            Self::StdinEof => "stdin_eof",
-            Self::CtrlC => "ctrl_c",
-        }
-    }
 }
 
 #[tokio::main]
@@ -80,10 +64,26 @@ async fn main() -> ExitCode {
                 }
             };
             init_logging(&config.log_level);
-            match serve().await {
-                Ok(()) => ExitCode::SUCCESS,
+            let runtime_metadata = metadata();
+            tracing::info!(
+                event = "backend.starting",
+                protocol_version = PROTOCOL_VERSION,
+                version = runtime_metadata.version,
+                build_revision = runtime_metadata.build_revision,
+                target = runtime_metadata.target,
+                state = "starting",
+                authoritative_state_mutated = false
+            );
+            match ipc::serve_stdio().await {
+                Ok(reason) => {
+                    log_stopping(reason);
+                    ExitCode::SUCCESS
+                }
                 Err(error) => {
-                    tracing::error!(event = "backend.runtime_failed", error_code = error.code());
+                    tracing::error!(
+                        event = "backend.protocol_rejected",
+                        error_code = error.code()
+                    );
                     ExitCode::from(1)
                 }
             }
@@ -183,27 +183,7 @@ fn write_json_error(error_code: &str) -> io::Result<()> {
     )
 }
 
-async fn serve() -> Result<(), CoreError> {
-    let runtime_metadata = metadata();
-    tracing::info!(
-        event = "backend.starting",
-        protocol_version = PROTOCOL_VERSION,
-        version = runtime_metadata.version,
-        build_revision = runtime_metadata.build_revision,
-        target = runtime_metadata.target,
-        state = "starting",
-        authoritative_state_mutated = false
-    );
-    tracing::info!(
-        event = "backend.ready",
-        protocol_version = PROTOCOL_VERSION,
-        version = runtime_metadata.version,
-        build_revision = runtime_metadata.build_revision,
-        state = "ready",
-        authoritative_state_mutated = false
-    );
-
-    let reason = wait_for_shutdown(tokio::io::stdin()).await?;
+fn log_stopping(reason: ShutdownReason) {
     tracing::info!(
         event = "backend.stopping",
         reason = reason.label(),
@@ -214,23 +194,4 @@ async fn serve() -> Result<(), CoreError> {
         reason = reason.label(),
         state = "stopped"
     );
-    Ok(())
-}
-
-async fn wait_for_shutdown(mut stdin: Stdin) -> Result<ShutdownReason, CoreError> {
-    let mut input_byte = [0_u8; 1];
-    tokio::select! {
-        signal_result = signal::ctrl_c() => {
-            signal_result.map_err(CoreError::Signal)?;
-            Ok(ShutdownReason::CtrlC)
-        }
-        read_result = stdin.read(&mut input_byte) => {
-            let read_count = read_result.map_err(CoreError::Input)?;
-            if read_count == 0 {
-                Ok(ShutdownReason::StdinEof)
-            } else {
-                Err(CoreError::ProtocolNotReady)
-            }
-        }
-    }
 }

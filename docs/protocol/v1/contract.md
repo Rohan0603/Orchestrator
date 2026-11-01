@@ -1,6 +1,6 @@
 # AgentConductor Core IPC protocol v1
 
-Status: frozen contract for incremental TypeScript-to-Rust migration. This is the private local Core API boundary between the TypeScript shell/client and the Rust Core. A transport supplies authenticated peer identity and message framing; Electron renderer-to-main IPC and Rust types are not part of the wire format. `orchestrator-ipc` remains a technical protocol identifier pending the separate naming migration in ORC-53.
+Status: frozen contract for incremental TypeScript-to-Rust migration. This is the private local Core API boundary between the TypeScript shell/client and the Rust Core. The selected v1 transport and its process-ownership assumptions are specified below; Electron renderer-to-main IPC and Rust types are not part of the wire format. `orchestrator-ipc` remains a technical protocol identifier pending the separate naming migration in ORC-53.
 
 The approved AgentConductor mission is a durable local control plane for autonomous software engineering: typed workers, deterministic orchestration, governed actions, isolated Git workspaces, evidence-backed completion, and crash-safe recovery. This contract serves the approved three-plane architecture: the trusted Core owns lifecycle, policy, routing, scheduling, reconciliation, evidence, telemetry, SQLite, and outbox; the Worker Plane produces untrusted claims through adapters; and the Source Plane owns Git repositories, per-attempt worktree leases, and artifacts. One active Worker remains the v0.1 limit.
 
@@ -9,6 +9,14 @@ ORC-33 freezes the Core API and TS↔Rust IPC. It does not define the separate W
 ## Framing and limits
 
 The v1 protocol uses UTF-8 JSON frames, each prefixed by a 4-byte unsigned big-endian byte length. The length is the JSON body's UTF-8 byte count, excluding the prefix. Zero-length frames, invalid UTF-8, invalid JSON, and frames over 1,048,576 bytes fail closed before dispatch. EOF between frames is normal shutdown; EOF within a prefix/body is a truncated-frame error. One frame contains exactly one JSON value.
+
+### Selected v1 transport: supervised private stdio
+
+The trusted Electron main process (or another trusted local Node host) starts the Rust executable directly with `shell:false` and private inherited stdin/stdout/stderr pipes. Stdout carries protocol frames only; stderr is drained as diagnostics. No TCP listener, named pipe, or renderer-owned process/transport is created. The parent owns the child handle and is responsible for requesting graceful shutdown and terminating that child if its shutdown deadline expires.
+
+The OS trust boundary is the parent process and its private inherited pipe handles. The `sender` tuple is pinned to the identity negotiated in `hello` and checked on every envelope, but it is correlation metadata; it is not treated as independent OS authentication. Any future host that can share a pipe with an untrusted local process must add and qualify a separate OS-authenticated boundary before use.
+
+An interrupted frame, malformed response, request timeout, or unexpected child exit poisons that client instance. It fails all outstanding requests and closes/terminates only the owned child; it does not resume a partial frame, retry a request, or replay a potentially completed effect. Reconnection means starting a new child and completing a fresh handshake. Client queues are bounded to 32 pending requests and 4 MiB of encoded pending request frames by default (both configurable to positive finite limits); each startup, request, and shutdown operation has a finite deadline. Queue saturation is rejected before enqueue. The implementation supports health and capability queries only at this migration stage; registered but unmigrated methods return `NOT_IMPLEMENTED`.
 
 Payloads over the limit must be stored as artifacts and represented by an artifact reference (`artifactId`, `uri`, `sha256`, `sizeBytes`, `mediaType`). Receivers verify the hash and size when reading. A local path is metadata, not authorization to read arbitrary files.
 
@@ -20,7 +28,7 @@ Arrays preserve their specified order. Objects have no ordering guarantee. Times
 
 ## Shared envelope fields
 
-Requests, responses, events, and hello messages contain `protocolVersion`, `messageId`, `correlationId`, `causationId` (string or null), and `sender: { id, role }`. IDs are opaque. The transport authenticates the peer separately; the `sender` field is correlation metadata and must match that authenticated identity. Applicable task/run/attempt/lease IDs, `expectedRevision`, `deadlineAt`, and `sequence` are explicit fields, never hidden in transport state. Optional `traceContext: { traceparent, tracestate? }` carries W3C trace context unchanged; it is observability metadata and grants no authority. V1 accepts version-00 traceparent values with nonzero 32-hex trace IDs and 16-hex span IDs; optional `tracestate` is limited to 512 printable ASCII bytes. Invalid trace context rejects the envelope.
+Requests, responses, events, and hello messages contain `protocolVersion`, `messageId`, `correlationId`, `causationId` (string or null), and `sender: { id, role }`. IDs are opaque. For v1 supervised stdio, the peer boundary is the owning parent process and its private inherited pipes; the `sender` field is pinned to the negotiated tuple as correlation metadata, not independent OS authentication. Applicable task/run/attempt/lease IDs, `expectedRevision`, `deadlineAt`, and `sequence` are explicit fields, never hidden in transport state. Optional `traceContext: { traceparent, tracestate? }` carries W3C trace context unchanged; it is observability metadata and grants no authority. V1 accepts version-00 traceparent values with nonzero 32-hex trace IDs and 16-hex span IDs; optional `tracestate` is limited to 512 printable ASCII bytes. Invalid trace context rejects the envelope.
 
 All messages are JSON objects. Unknown fields are ignored for v1 only after known fields have been validated. `extensions` is the preferred namespace for optional producer metadata. Receivers must preserve safety checks even when extension data is present.
 
@@ -34,7 +42,8 @@ The initial method registry is grouped by domain:
 
 | Method | Payload | Result | Baseline status |
 | -- | -- | -- | -- |
-| `system.health` | `{}` | readiness and backend identity | implemented by TypeScript app status, to be adapted |
+| `system.health` | `{}` | readiness and backend identity | Rust v1 transport stub; database fields reflect no database opened |
+| `system.shutdown` | `{ deadlineAt }` | shutdown disposition | reserved; initial Rust transport shuts down on parent stdin EOF |
 | `projects.create` | project metadata | project | TypeScript SDK |
 | `projects.get` | `{ projectId }` | project or null | TypeScript SDK |
 | `projects.list` | `{}` | project array | TypeScript SDK |
@@ -69,7 +78,7 @@ The initial method registry is grouped by domain:
 | `mcp.tools.list` | `{ workerId, leaseToken, serverId, approvalId? }` | tool descriptors | TypeScript SDK; lease/policy gates retained |
 | `mcp.tools.call` | `{ workerId, leaseToken, serverId, toolName, arguments, sequence, idempotencyKey?, approvalId? }` | tool result | TypeScript SDK; lease/policy gates retained |
 | `plugins.execute` | `{ workerId, leaseToken, pluginId, capability, input, sequence, idempotencyKey?, approvalId? }` | JSON result | TypeScript SDK; trusted local code and lease/policy gates retained |
-| `capabilities.list` | `{}` | capability manifest | baseline adapter pending |
+| `capabilities.list` | `{}` | capability manifest | Rust v1 manifest; unmigrated service capabilities remain unverified |
 | `artifacts.get` | `{ artifactId }` | verified artifact metadata/reference | repository-specific storage adapter pending |
 
 The registry is closed: a method absent from this table is not callable. A listed method whose baseline adapter is not yet implemented returns `NOT_IMPLEMENTED`, never a guessed success. Tool/plugin execution remains lease-owned, sequence-checked, and policy-gated; no new direct worker-to-provider path is introduced. Worker-provided progress, findings, artifacts, cancellation observations and terminal results remain untrusted input until Core validation, policy, evidence and review rules accept them.
@@ -120,7 +129,7 @@ Stable codes: `INVALID_ENVELOPE`, `UNSUPPORTED_VERSION`, `FRAME_TOO_LARGE`, `MAL
 
 ## Shutdown and health
 
-`system.health` reports `{ ready, state, database, protocolVersion, backendVersion, activeRuns, recoveryRequired }`; readiness is false until initialization, handshake, and schema checks complete. Graceful shutdown is requested as `system.shutdown` with a deadline; the service stops accepting new work, persists/flushes committed state, reports outstanding/uncertain work, and exits before the deadline when possible. Deadline expiry is reported as incomplete shutdown; it does not convert active work to success or authorize replay.
+`system.health` reports `{ ready, state, database, protocolVersion, backendVersion, activeRuns, recoveryRequired }`; readiness is false until initialization, handshake, and schema checks complete. The full service-level `system.shutdown` operation uses a deadline: the service stops accepting new work, persists/flushes committed state, reports outstanding/uncertain work, and exits before the deadline when possible. It remains reserved in the initial Rust transport slice, which performs orderly shutdown when the owning parent closes stdin; the parent waits for the child and terminates only that owned process if its finite close deadline expires. Deadline expiry is reported as incomplete shutdown; it does not convert active work to success or authorize replay.
 
 ## Mapping and baseline seams
 
