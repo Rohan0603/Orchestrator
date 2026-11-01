@@ -190,7 +190,7 @@ passed at 1/10/100 logical workers.
 
 ## Clean-close lease-expiry recovery probe — 2 November 2026
 
-Raw artifact: `ts-baseline-2026-11-01T20-42-40.600Z-21964.json` (latest combined
+Raw artifact: `ts-baseline-2026-11-01T20-46-40.736Z-32212.json` (latest combined
 run; the initial standalone probe is also preserved as
 `ts-baseline-2026-11-01T20-29-15.489Z-23140.json`). Command:
 `npm run benchmark:baseline` (exit 0; one Electron benchmark test, correctness
@@ -198,7 +198,7 @@ passed at 1/10/100 logical workers). This probe creates a one-millisecond SDK
 lease, cleanly closes SQLite, waits for expiry, reopens SQLite and constructs a
 new SDK instance, then attempts to claim work. The latest combined run measured
 database reopen at 4.16 ms, SDK construction at 0.03 ms, and expiry
-reconciliation/claim at 7.06 ms in this single host-sensitive sample. It
+reconciliation/claim at 5.81 ms in this single host-sensitive sample. It
 verified one run remained `recovery_required`, its
 recovery record remained `recovery_required`, and no replacement run was
 created. This measures clean database close/reopen recovery, not abrupt process
@@ -212,13 +212,13 @@ SDK construction explicitly.
 
 ## Synthetic provider disconnect probe — 2 November 2026
 
-Raw artifact: `ts-baseline-2026-11-01T20-42-40.600Z-21964.json` (the earlier
+Raw artifact: `ts-baseline-2026-11-01T20-46-40.736Z-32212.json` (the earlier
 standalone run `ts-baseline-2026-11-01T20-31-41.110Z-24996.json` is preserved).
 The same
 `npm run benchmark:baseline` run passed its 1/10/100 workload correctness
 checks and injected a fake fetch response that emitted partial content before
 throwing a synthetic stream disconnect. No socket or real provider was used.
-The latest combined run completed in 66.45 ms; the SDK stored the run as
+The latest combined run completed in 61.88 ms; the SDK stored the run as
 `rejected`, emitted `started`, `delta`, `completed`, and created no acceptance
 decision. This covers local adapter handling of a transport interruption, not
 live provider disconnect/reconnect behavior or provider-side cancellation.
@@ -227,12 +227,12 @@ are single-run descriptive timings only.
 
 ## Native owned-process cancellation probe — 2 November 2026
 
-Raw artifact: `ts-baseline-2026-11-01T20-42-40.600Z-21964.json` (standalone
+Raw artifact: `ts-baseline-2026-11-01T20-46-40.736Z-32212.json` (standalone
 run `ts-baseline-2026-11-01T20-33-35.524Z-16700.json` is also preserved). Command:
 `npm run benchmark:baseline` (exit 0). On Windows, the harness launches the
 existing native ownership helper's worker/child/grandchild fixture, waits until
 all three processes have created their start markers, then times verified Job
-Object cleanup. The latest combined run measured 1.16 ms and verified zero
+Object cleanup. The latest combined run measured 1.15 ms and verified zero
 active processes after cancellation. This is one host-local sample for one process tree; it is
 not an SDK-wide cancellation command, repeated distribution, or concurrent
 cancellation storm. The v0.1 one-active-worker constraint remains in force.
@@ -243,7 +243,7 @@ The latest combined artifact above also caps a disposable database at eight
 pages above its schema size, writes 16 KiB blobs transactionally, and asserts
 that SQLite returns `SQLITE_FULL` without damaging database integrity. This
 run committed two rows (32 KiB of payload), reached the 109-page cap from 101
-pages, and completed the pressure loop in 9.86 ms; `integrity_check` returned
+pages, and completed the pressure loop in 9.25 ms; `integrity_check` returned
 `ok`. The database is temporary and isolated. This is SQLite page-limit
 simulation, not OS-level disk exhaustion. Repeated sustained lock contention
 and real disk-full behavior remain unmeasured.
@@ -252,7 +252,7 @@ and real disk-full behavior remain unmeasured.
 
 The latest combined artifact also holds `BEGIN IMMEDIATE` on one connection
 while a second connection makes ten writes with a 10 ms busy timeout. All ten
-returned `SQLITE_BUSY`; p50/p95 wait was 66.57/74.60 ms on this Windows host.
+returned `SQLITE_BUSY`; p50/p95 wait was 66.75/67.25 ms on this Windows host.
 After releasing the lock, one explicit retry committed, and the database
 contained exactly one row. This is a single bounded contention run; Windows
 scheduling makes measured waits longer than the configured timeout. It does
@@ -268,22 +268,35 @@ data-URL renderer load time and a main-to-renderer JavaScript round-trip after
 each scale. This is a synthetic renderer responsiveness probe, not the product
 UI or visual paint/input latency.
 
-Renderer startup to `did-finish-load` was 106.7 ms. Per-scale timer interval
+Renderer startup to `did-finish-load` was 103.64 ms. Per-scale timer interval
 delay p95/max and main-to-renderer round-trip were:
 
 | Logical workers | Renderer samples | Timer delay p95 / max (ms) | Main-to-renderer round-trip (ms) | Main-thread timer drift (ms) |
 | --: | --: | --: | --: | --: |
-| 1 | 54 | 6.80 / 6.80 | 0.82 | 472.21 |
-| 10 | 123 | 6.40 / 9.10 | 1.10 | 1,190.82 |
-| 100 | 1,122 | 6.50 / 7.90 | 1.13 | 11,162.37 |
+| 1 | 51 | 6.60 / 6.80 | 0.84 | 447.79 |
+| 10 | 123 | 6.60 / 9.70 | 0.77 | 1,184.10 |
+| 100 | 1,125 | 6.50 / 12.70 | 1.18 | 11,213.00 |
 
 The renderer timer stayed active while the main thread's 10 ms timer drift grew
 with synchronous backend load. Results are one host-specific sample, with no
 user input or pixel paint measurement and no latency target inferred from them.
 
-ORC-34 remains In Progress. Open measurements: product UI paint/input latency;
-full product startup/readiness; abrupt worker/backend process crash and
-restart; live provider disconnect/reconnect and remote cancellation;
-concurrent cancellation stress; extended SQLite lock contention; OS-level disk
-pressure; peak queue depth and allocation counts; and repeated recovery and
-cancellation distributions.
+## Abrupt backend child crash and restart reconciliation — 2 November 2026
+
+The same latest artifact runs `scripts/baseline-crash-child.cjs` in a separate
+Electron-Node process. The child opens a disposable WAL database, creates and
+claims a task, writes a readiness record, and remains alive. The harness
+terminates it without calling database close, waits for its process streams to
+close, then reopens SQLite and runs `RunRepository.reconcileInterruptedRuns`,
+matching the main app's startup recovery path. Child readiness took 170.95 ms,
+termination took 16.43 ms, and database reopen plus reconciliation took 9.90 ms
+in this run. Exactly one run was reconciled to `recovery_required`, its recovery
+row was durable, and no replacement run was created. The process exit was
+`SIGTERM`/Windows process termination; this is controlled child-process crash
+simulation, not power loss, OS crash, or a full Electron application restart.
+
+ORC-34 remains In Progress. Still open: product UI paint/input latency and full
+product startup/readiness; OS/power-loss crash behavior and worker-process
+crash duration; live provider reconnect; concurrent cancellation stress;
+extended SQLite lock contention; OS-level disk pressure; peak queue depth and
+allocation counts; and repeated recovery/cancellation distributions.

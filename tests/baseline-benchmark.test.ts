@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { cpus, tmpdir, totalmem } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -11,6 +11,7 @@ import Database from "better-sqlite3";
 import { NativeOwnershipService, resolveHelperPath } from "../src/execution/native-ownership";
 import { OpenAICompatibleAdapter } from "../src/harness/openai-compatible-adapter";
 import { openDatabase } from "../src/persistence/database";
+import { RunRepository } from "../src/persistence/run-repository";
 import { createOrchestratorSdk } from "../src/sdk";
 import type { Task } from "../src/shared/domain";
 import type { TaskAssignment, WorkerMessage, WorkerMessageInput, WorkerRegistration } from "../src/sdk/contracts";
@@ -67,6 +68,7 @@ async function runBaselineBenchmark(): Promise<void> {
   const outputPath = resolve(process.env.ORCHESTRATOR_BASELINE_OUTPUT ?? join("experiments", "baselines", `ts-baseline-${runId}.json`));
   const results: Array<Record<string, unknown>> = [];
   let leaseExpiryRecovery: Record<string, unknown> | null = null;
+  let abruptBackendRestart: Record<string, unknown> | null = null;
   let providerDisconnect: Record<string, unknown> | null = null;
   let ownedProcessCancellation: Record<string, unknown> | null = null;
   let storagePressure: Record<string, unknown> | null = null;
@@ -421,6 +423,86 @@ async function runBaselineBenchmark(): Promise<void> {
       }
     }
 
+    // Kill a separate Electron-Node child after it commits an active run, then
+    // exercise the same interrupted-run reconciliation used during app startup.
+    {
+      const databasePath = join(workspace, "abrupt-backend-restart.db");
+      const childScript = resolve("scripts/baseline-crash-child.cjs");
+      const child = spawn(process.execPath, [childScript, databasePath], {
+        cwd: process.cwd(),
+        env: {...process.env, ELECTRON_RUN_AS_NODE: "1"},
+        stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true
+      });
+      let childStderr = "";
+      child.stderr.setEncoding("utf8");
+      child.stderr.on("data", (chunk: string) => { childStderr = `${childStderr}${chunk}`.slice(-4000); });
+      const childClosed = new Promise<{code: number | null; signal: NodeJS.Signals | null}>((resolvePromise, reject) => {
+        child.once("error", reject);
+        child.once("close", (code, signal) => resolvePromise({code, signal}));
+      });
+      let readyLine = "";
+      let readyBuffer = "";
+      const readinessStarted = performance.now();
+      const readiness = new Promise<{taskId: string; runId: string}>((resolvePromise, reject) => {
+        const timeout = setTimeout(() => reject(new Error(`Crash child did not become ready: ${childStderr}`)), 15_000);
+        child.stdout.setEncoding("utf8");
+        child.stdout.on("data", (chunk: string) => {
+          readyBuffer += chunk;
+          const newline = readyBuffer.indexOf("\n");
+          if (newline < 0) return;
+          readyLine = readyBuffer.slice(0, newline);
+          clearTimeout(timeout);
+          try {
+            const ready = JSON.parse(readyLine) as {ready: boolean; taskId: string; runId: string};
+            if (!ready.ready || !ready.taskId || !ready.runId) throw new Error("Crash child readiness record is invalid");
+            resolvePromise(ready);
+          } catch (error) {
+            reject(error);
+          }
+        });
+      });
+      try {
+        const ready = await readiness;
+        const childReadinessMs = performance.now() - readinessStarted;
+        const terminationStarted = performance.now();
+        assert.equal(child.kill(), true, "benchmark backend child should terminate on request");
+        const exit = await childClosed;
+        const abruptTerminationMs = performance.now() - terminationStarted;
+        assert.ok(exit.code !== 0 || exit.signal !== null, "child should not report a graceful successful exit");
+
+        const recoveryStarted = performance.now();
+        const restartedDatabase = openDatabase(databasePath);
+        try {
+          const runRepository = new RunRepository(restartedDatabase);
+          const reconciledRuns = runRepository.reconcileInterruptedRuns(new Date().toISOString());
+          const recoveryDurationMs = performance.now() - recoveryStarted;
+          assert.ok(reconciledRuns.some((run) => run.id === ready.runId), "startup reconciliation should include the interrupted run");
+          const recovered = restartedDatabase.prepare("SELECT state,recovery_state FROM runs WHERE id=?").get(ready.runId) as {state: string; recovery_state: string} | undefined;
+          const recoveryRecord = restartedDatabase.prepare("SELECT state FROM recovery WHERE run_id=?").get(ready.runId) as {state: string} | undefined;
+          assert.deepEqual(recovered, {state: "recovery_required", recovery_state: "recovery_required"});
+          assert.deepEqual(recoveryRecord, {state: "recovery_required"});
+          assert.equal((restartedDatabase.prepare("SELECT count(*) AS count FROM runs WHERE task_id=?").get(ready.taskId) as {count: number}).count, 1,
+            "reconciliation must not create a replacement run");
+          abruptBackendRestart = {
+            scenario: "abrupt termination of a separate Electron-Node backend child with an active SDK lease",
+            childReadinessMs,
+            abruptTerminationMs,
+            childExitCode: exit.code,
+            childExitSignal: exit.signal,
+            startupReconciliationMs: recoveryDurationMs,
+            reconciliationRecords: reconciledRuns.length,
+            correctness: {runState: recovered.state, recoveryState: recovered.recovery_state, recoveryRecordState: recoveryRecord.state, automaticReplacement: false}
+          };
+        } finally {
+          restartedDatabase.close();
+        }
+      } finally {
+        if (child.exitCode === null && child.signalCode === null) child.kill();
+        await childClosed;
+      }
+    }
+
     // Simulate a provider transport dropping after streaming starts. The fake
     // fetch never opens a socket or contacts a real endpoint.
     {
@@ -643,6 +725,7 @@ async function runBaselineBenchmark(): Promise<void> {
     eventLoopDelayMethod: "Node perf_hooks.monitorEventLoopDelay with 10 ms resolution plus one 10 ms timer-drift probe per scale; histogram percentiles and timer drift are descriptive single-run observations, not cross-run confidence intervals",
     scales: results,
     recovery: leaseExpiryRecovery,
+    abruptBackendRestart,
     providerDisconnect,
     ownedProcessCancellation,
     storagePressure,
@@ -657,7 +740,7 @@ async function runBaselineBenchmark(): Promise<void> {
       "Renderer UI frame paint/input responsiveness; this harness measures an isolated renderer's timer delay and main-to-renderer JavaScript round-trip, not pixel paints or user input.",
       "Cancellation storms and SDK-wide cancellation (one native worker process tree is measured; concurrent cancellation stress is not).",
       "Live external provider disconnect/reconnect behavior; only an injected synthetic mid-stream disconnect is measured, with no network call.",
-      "Abrupt backend process termination/restart and recovery duration (this is not a process-level crash harness).",
+      "Abrupt termination of the main Electron app or OS/power-loss crashes; a separate Electron-Node backend child crash and startup reconciliation is measured.",
       "OS-level disk-full behavior and extended SQLite lock contention beyond ten bounded conflicts; storage pressure and ten 10 ms lock timeouts use disposable database simulations.",
       "Peak queue depth and allocation counts; database initialization, SDK construction, and database close are measured, but full Electron readiness is not."
     ]
