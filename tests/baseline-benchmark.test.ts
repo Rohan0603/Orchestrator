@@ -72,6 +72,7 @@ async function runBaselineBenchmark(): Promise<void> {
   let abruptBackendRestart: Record<string, unknown> | null = null;
   let providerDisconnect: Record<string, unknown> | null = null;
   let ownedProcessCancellation: Record<string, unknown> | null = null;
+  let ownedProcessCancellationStorm: Record<string, unknown> | null = null;
   let storagePressure: Record<string, unknown> | null = null;
   let sustainedLockContention: Record<string, unknown> | null = null;
   let outboxBacklog: Record<string, unknown> | null = null;
@@ -593,6 +594,48 @@ async function runBaselineBenchmark(): Promise<void> {
             observedProcessesBeforeCancellation: markerNames.length,
             cancellationStorm: false
           };
+        const stormSize = 10;
+        const stormTrees = Array.from({length: stormSize}, (_, index) => {
+          const directory = join(workspace, "owned-cancellation-storm", String(index));
+          mkdirSync(directory, {recursive: true});
+          return {
+            directory,
+            service: new NativeOwnershipService(helperPath),
+            correlation: {runId: `baseline-cancel-storm-run-${index}`, attemptId: `baseline-cancel-storm-attempt-${index}`, nonce: `${runId}-${index}`}
+          };
+        });
+        try {
+          await Promise.all(stormTrees.map(async (tree) => {
+            await tree.service.start();
+            await tree.service.launchFixture(tree.directory, tree.correlation);
+            const deadline = Date.now() + 5000;
+            while (markerNames.some((name) => !existsSync(join(tree.directory, name))) && Date.now() < deadline) {
+              await new Promise<void>((resolvePromise) => setTimeout(resolvePromise, 10));
+            }
+            assert.ok(markerNames.every((name) => existsSync(join(tree.directory, name))), "every cancellation-stress process tree should be running before the barrier");
+          }));
+          const stormStarted = performance.now();
+          const stormResults = await Promise.all(stormTrees.map(async (tree) => {
+            const started = performance.now();
+            const result = await tree.service.cancel(tree.correlation);
+            return {latencyMs: performance.now() - started, ...result};
+          }));
+          const stormDurationMs = performance.now() - stormStarted;
+          assert.equal(stormResults.length, stormSize);
+          assert.ok(stormResults.every((result) => result.cleanupVerified && result.activeProcessesAfterCleanup === 0), "all concurrent process-tree cancellations should verify cleanup");
+          ownedProcessCancellationStorm = {
+            scenario: "concurrent native Windows Job Object cancellation of independent worker process trees",
+            concurrentTrees: stormSize,
+            observedProcessesBeforeCancellation: stormSize * markerNames.length,
+            cancellationLatencyMs: quantiles(stormResults.map((result) => result.latencyMs)),
+            wallClockDurationMs: stormDurationMs,
+            verifiedCleanupCount: stormResults.filter((result) => result.cleanupVerified && result.activeProcessesAfterCleanup === 0).length,
+            activeProcessesAfterCleanup: stormResults.reduce((sum, result) => sum + result.activeProcessesAfterCleanup, 0),
+            correctness: "all trees were ready before concurrent cancellation; every Job Object reported zero active processes"
+          };
+        } finally {
+          await Promise.all(stormTrees.map((tree) => tree.service.close()));
+        }
         } finally {
           await service.close();
         }
@@ -785,6 +828,7 @@ async function runBaselineBenchmark(): Promise<void> {
     abruptBackendRestart,
     providerDisconnect,
     ownedProcessCancellation,
+    ownedProcessCancellationStorm,
     storagePressure,
     sustainedLockContention,
     outboxBacklog,
@@ -796,11 +840,11 @@ async function runBaselineBenchmark(): Promise<void> {
     interpretation: "Synthetic in-process workload. Logical workers are SDK records, not 1/10/100/1000 external worker processes. The current SDK caps active runs at 100, so larger scales are executed in bounded claim/message/report batches rather than pretending all logical workers are concurrently active. Results are a local baseline only and do not establish production capacity or an SLA. Correctness assertions run before timing results are saved.",
     unmeasured: [
       "Renderer UI frame paint/input responsiveness; this harness measures an isolated renderer's timer delay and main-to-renderer JavaScript round-trip, not pixel paints or user input.",
-      "Cancellation storms and SDK-wide cancellation (one native worker process tree is measured; concurrent cancellation stress is not).",
+      "SDK-wide cancellation (the concurrent cancellation probe exercises native-owned process trees, not SDK task cancellation).",
       "Live external provider disconnect/reconnect behavior; only an injected synthetic mid-stream disconnect is measured, with no network call.",
       "Abrupt termination of the main Electron app or OS/power-loss crashes; a separate Electron-Node backend child crash and startup reconciliation is measured.",
       "OS-level disk-full behavior and extended SQLite lock contention beyond ten bounded conflicts; storage pressure and ten 10 ms lock timeouts use disposable database simulations.",
-      "Peak in-memory queue depth and allocation counts; durable outbox peak depth/recovery is measured, but full Electron readiness is not."
+      "Transient in-memory delivery queue depth (the SDK uses synchronous SQLite delivery and has no separate queue) and exact allocation counts; durable outbox depth/recovery and before/after heap/RSS are measured."
     ]
   };
   mkdirSync(dirname(outputPath), {recursive: true});

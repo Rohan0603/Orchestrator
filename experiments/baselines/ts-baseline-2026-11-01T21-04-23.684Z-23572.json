@@ -1,0 +1,720 @@
+{
+  "schemaVersion": "orchestrator-ts-backend-baseline-v1",
+  "runId": "2026-11-01T21-04-23.684Z-23572",
+  "sourceRevision": "b72dbfd1ed6153570d7f781ffee4c966e5b382fb",
+  "workingTree": {
+    "dirty": true,
+    "paths": [
+      " M experiments/baselines/README.md",
+      " M tests/baseline-benchmark.test.ts",
+      "?? experiments/baselines/ts-baseline-2026-11-01T20-53-57.669Z-17224.json",
+      "?? experiments/baselines/ts-baseline-2026-11-01T20-55-00.861Z-28152.json",
+      "?? experiments/baselines/ts-baseline-2026-11-01T20-55-52.612Z-8368.json",
+      "?? experiments/baselines/ts-baseline-2026-11-01T20-56-53.551Z-8120.json",
+      "?? experiments/baselines/ts-baseline-2026-11-01T21-01-56.343Z-3796.json"
+    ],
+    "trackedDiffSha256": "c228a25dde2d4f3805c2db4577ce6d1227969948de7e31183fc09aa7a8350790",
+    "untrackedFiles": {
+      "experiments/baselines/ts-baseline-2026-11-01T20-53-57.669Z-17224.json": "0f15736e92e374c100678b30c9a967eb8ff70439b6f9ff2a25218580e4c1faff",
+      "experiments/baselines/ts-baseline-2026-11-01T20-55-00.861Z-28152.json": "3a351d78d445a0f238476afa17817959f16892e06f604657b827c5e8f0b4563b",
+      "experiments/baselines/ts-baseline-2026-11-01T20-55-52.612Z-8368.json": "61ffd1de1289636678c52cd69c3b051751d426b1718e249132b749b635c0649e",
+      "experiments/baselines/ts-baseline-2026-11-01T20-56-53.551Z-8120.json": "30c1cc47a32efddae85927e960fd13337da20564b762e61051e11ea133313f3f",
+      "experiments/baselines/ts-baseline-2026-11-01T21-01-56.343Z-3796.json": "97830a0d86d0f7b496e346bc6f6a2941c2e10079c5505847255b02c5517f46fb"
+    }
+  },
+  "recordedAt": "2026-11-01T21:04:46.704Z",
+  "host": {
+    "platform": "win32",
+    "architecture": "x64",
+    "osRelease": "10.0.26200",
+    "cpuModel": "AMD Ryzen 5 4600H with Radeon Graphics         ",
+    "logicalCpuCount": 12,
+    "totalMemoryBytes": 16505966592
+  },
+  "runtime": {
+    "node": "24.22.0",
+    "electron": "44.9.3",
+    "v8": "15.2.124.43-electron.0"
+  },
+  "electronRendererStartupMs": 108.65040000000002,
+  "build": {
+    "mode": "compiled TypeScript source executed by Electron Node test runner",
+    "sqliteBinding": "better-sqlite3 under Electron ABI"
+  },
+  "configuration": {
+    "logicalWorkerCounts": [
+      1,
+      10,
+      100
+    ],
+    "progressMessagesPerWorker": 3
+  },
+  "eventLoopDelayMethod": "Node perf_hooks.monitorEventLoopDelay with 10 ms resolution plus one 10 ms timer-drift probe per scale; histogram percentiles and timer drift are descriptive single-run observations, not cross-run confidence intervals",
+  "scales": [
+    {
+      "logicalWorkers": 1,
+      "workload": {
+        "maximumActiveRuns": 1,
+        "executionBatches": 1,
+        "control": "lease heartbeat",
+        "progressMessagesPerWorker": 3,
+        "terminalReports": 1,
+        "reviewRequestFanOut": "one review.requested per successful report",
+        "artifactReferences": true,
+        "duplicateProgressReplaysPerWorker": 1,
+        "externalWorkerProcesses": 0
+      },
+      "readiness": {
+        "databaseInitializationMs": 21.753500000000003,
+        "sdkReadinessMs": 0.14379999999999882
+      },
+      "phaseMilliseconds": {
+        "setup": 15.024400000000014,
+        "claimBatch": 7.628399999999999,
+        "messageBatch": 44.879999999999995,
+        "reportAndInlineReviewBatch": 17.877499999999998,
+        "total": 85.74340000000001
+      },
+      "eventLoopDelayMilliseconds": {
+        "sampleCount": 3,
+        "min": 10.960896,
+        "p50": 16.080895,
+        "p95": 16.687103,
+        "p99": 16.687103,
+        "p999": 16.687103,
+        "max": 16.687103,
+        "samplingResolutionMs": 10
+      },
+      "eventLoopTimerDriftMs": 466.4955,
+      "electronRendererResponsiveness": {
+        "samples": 54,
+        "timerDelayMilliseconds": {
+          "count": 54,
+          "p50": 0,
+          "p95": 6.5,
+          "p99": 6.5999999940395355,
+          "p999": 6.5999999940395355,
+          "max": 6.5999999940395355
+        },
+        "mainToRendererRoundTripMs": 0.8414999999999964,
+        "backgroundThrottling": false,
+        "isolatedRendererProcess": true
+      },
+      "sqlite": {
+        "isolatedImmediateTransactionSamples": 100,
+        "transactionLatencyMilliseconds": {
+          "count": 100,
+          "p50": 2.732900000000029,
+          "p95": 3.3185000000000286,
+          "p99": 4.1877999999999815,
+          "p999": 4.4254999999999995,
+          "max": 4.4254999999999995
+        },
+        "transactionDatabaseInitializationMs": 14.970100000000002,
+        "transactionDatabaseCloseMs": 0.24729999999999563,
+        "transactionDatabaseBytes": 413696,
+        "busyTimeoutMs": 10,
+        "busyLockWaitMs": 58.72359999999992,
+        "busyErrors": 1,
+        "retriesAfterUnlock": 1
+      },
+      "operations": {
+        "register_worker_ms": {
+          "count": 1,
+          "p50": 9.399099999999976,
+          "p95": 9.399099999999976,
+          "p99": 9.399099999999976,
+          "p999": 9.399099999999976,
+          "max": 9.399099999999976,
+          "operationsPerSecondContribution": 11.662705234455363
+        },
+        "create_task_ms": {
+          "count": 1,
+          "p50": 5.5482000000000085,
+          "p95": 5.5482000000000085,
+          "p99": 5.5482000000000085,
+          "p999": 5.5482000000000085,
+          "max": 5.5482000000000085,
+          "operationsPerSecondContribution": 11.662705234455363
+        },
+        "claim_task_ms": {
+          "count": 1,
+          "p50": 7.612599999999986,
+          "p95": 7.612599999999986,
+          "p99": 7.612599999999986,
+          "p999": 7.612599999999986,
+          "max": 7.612599999999986,
+          "operationsPerSecondContribution": 11.662705234455363
+        },
+        "heartbeat_ms": {
+          "count": 1,
+          "p50": 14.214999999999975,
+          "p95": 14.214999999999975,
+          "p99": 14.214999999999975,
+          "p999": 14.214999999999975,
+          "max": 14.214999999999975,
+          "operationsPerSecondContribution": 11.662705234455363
+        },
+        "progress_message_ms": {
+          "count": 3,
+          "p50": 9.688600000000008,
+          "p95": 10.458799999999997,
+          "p99": 10.458799999999997,
+          "p999": 10.458799999999997,
+          "max": 10.458799999999997,
+          "operationsPerSecondContribution": 34.988115703366084
+        },
+        "duplicate_progress_replay_ms": {
+          "count": 3,
+          "p50": 0.4101999999999748,
+          "p95": 0.4148000000000138,
+          "p99": 0.4148000000000138,
+          "p999": 0.4148000000000138,
+          "max": 0.4148000000000138,
+          "operationsPerSecondContribution": 34.988115703366084
+        },
+        "report_with_inline_review_delivery_ms": {
+          "count": 1,
+          "p50": 17.866999999999962,
+          "p95": 17.866999999999962,
+          "p99": 17.866999999999962,
+          "p999": 17.866999999999962,
+          "max": 17.866999999999962,
+          "operationsPerSecondContribution": 11.662705234455363
+        },
+        "sqlite_busy_recovery_retry_ms": {
+          "count": 1,
+          "p50": 3.649099999999976,
+          "p95": 3.649099999999976,
+          "p99": 3.649099999999976,
+          "p999": 3.649099999999976,
+          "max": 3.649099999999976,
+          "operationsPerSecondContribution": 11.662705234455363
+        }
+      },
+      "throughput": {
+        "allMeasuredOperationsPerSecond": 139.95246281346434
+      },
+      "cpu": {
+        "userMilliseconds": 16,
+        "systemMilliseconds": 32
+      },
+      "memoryBytes": {
+        "rssBefore": 108359680,
+        "rssAfter": 110018560,
+        "heapUsedBefore": 5692284,
+        "heapUsedAfter": 6412780,
+        "heapTotalBefore": 8126464,
+        "heapTotalAfter": 8126464
+      },
+      "correctness": {
+        "tasks": 1,
+        "runsInVerification": 1,
+        "progressRows": 3,
+        "reportRows": 1,
+        "reviewRequests": 1,
+        "acknowledgedDeliveries": 1,
+        "pendingDeliveries": 0,
+        "queueDepthAfterInlineDelivery": 0,
+        "duplicateReplaysResolvedToOriginal": 3
+      },
+      "databaseBytes": 438272,
+      "databaseCloseMs": 0.7875000000000227,
+      "databaseWalBytesAfterClose": 0,
+      "instrumentationLimits": [
+        "SQLite lock contention is one 10 ms busy-timeout conflict and one successful retry; it does not model sustained multi-connection lock or storage pressure.",
+        "Queue depth is sampled after the synchronous report and delivery batch; peak transient depth is not sampled.",
+        "Allocation counts are unavailable; before/after heap and RSS are observational and include runtime noise."
+      ]
+    },
+    {
+      "logicalWorkers": 10,
+      "workload": {
+        "maximumActiveRuns": 10,
+        "executionBatches": 1,
+        "control": "lease heartbeat",
+        "progressMessagesPerWorker": 3,
+        "terminalReports": 10,
+        "reviewRequestFanOut": "one review.requested per successful report",
+        "artifactReferences": true,
+        "duplicateProgressReplaysPerWorker": 1,
+        "externalWorkerProcesses": 0
+      },
+      "readiness": {
+        "databaseInitializationMs": 16.969100000000026,
+        "sdkReadinessMs": 0.013900000000035106
+      },
+      "phaseMilliseconds": {
+        "setup": 152.92549999999994,
+        "claimBatch": 67.57420000000002,
+        "messageBatch": 438.9511,
+        "reportAndInlineReviewBatch": 166.78149999999982,
+        "total": 826.5331
+      },
+      "eventLoopDelayMilliseconds": {
+        "sampleCount": 3,
+        "min": 12.951552,
+        "p50": 16.359423,
+        "p95": 16.793599,
+        "p99": 16.793599,
+        "p999": 16.793599,
+        "max": 16.793599,
+        "samplingResolutionMs": 10
+      },
+      "eventLoopTimerDriftMs": 1206.3202999999999,
+      "electronRendererResponsiveness": {
+        "samples": 124,
+        "timerDelayMilliseconds": {
+          "count": 124,
+          "p50": 0,
+          "p95": 6.700000002980232,
+          "p99": 7.799999997019768,
+          "p999": 15.5,
+          "max": 15.5
+        },
+        "mainToRendererRoundTripMs": 0.9571000000000822,
+        "backgroundThrottling": false,
+        "isolatedRendererProcess": true
+      },
+      "sqlite": {
+        "isolatedImmediateTransactionSamples": 100,
+        "transactionLatencyMilliseconds": {
+          "count": 100,
+          "p50": 2.555599999999913,
+          "p95": 3.123800000000074,
+          "p99": 3.544399999999996,
+          "p999": 3.572199999999839,
+          "max": 3.572199999999839
+        },
+        "transactionDatabaseInitializationMs": 15.89370000000008,
+        "transactionDatabaseCloseMs": 0.26529999999979736,
+        "transactionDatabaseBytes": 413696,
+        "busyTimeoutMs": 10,
+        "busyLockWaitMs": 68.36290000000008,
+        "busyErrors": 1,
+        "retriesAfterUnlock": 1
+      },
+      "operations": {
+        "register_worker_ms": {
+          "count": 10,
+          "p50": 10.052900000000022,
+          "p95": 13.800400000000081,
+          "p99": 13.800400000000081,
+          "p999": 13.800400000000081,
+          "max": 13.800400000000081,
+          "operationsPerSecondContribution": 12.098729016418096
+        },
+        "create_task_ms": {
+          "count": 10,
+          "p50": 4.1462999999999965,
+          "p95": 6.311699999999973,
+          "p99": 6.311699999999973,
+          "p999": 6.311699999999973,
+          "max": 6.311699999999973,
+          "operationsPerSecondContribution": 12.098729016418096
+        },
+        "claim_task_ms": {
+          "count": 10,
+          "p50": 6.28449999999998,
+          "p95": 9.03329999999994,
+          "p99": 9.03329999999994,
+          "p999": 9.03329999999994,
+          "max": 9.03329999999994,
+          "operationsPerSecondContribution": 12.098729016418096
+        },
+        "heartbeat_ms": {
+          "count": 10,
+          "p50": 14.730099999999993,
+          "p95": 15.826800000000048,
+          "p99": 15.826800000000048,
+          "p999": 15.826800000000048,
+          "max": 15.826800000000048,
+          "operationsPerSecondContribution": 12.098729016418096
+        },
+        "progress_message_ms": {
+          "count": 30,
+          "p50": 9.191500000000133,
+          "p95": 10.022900000000163,
+          "p99": 10.82329999999979,
+          "p999": 10.82329999999979,
+          "max": 10.82329999999979,
+          "operationsPerSecondContribution": 36.296187049254286
+        },
+        "duplicate_progress_replay_ms": {
+          "count": 30,
+          "p50": 0.3837999999998374,
+          "p95": 0.685799999999972,
+          "p99": 0.6904000000001815,
+          "p999": 0.6904000000001815,
+          "max": 0.6904000000001815,
+          "operationsPerSecondContribution": 36.296187049254286
+        },
+        "report_with_inline_review_delivery_ms": {
+          "count": 10,
+          "p50": 16.292799999999943,
+          "p95": 19.366199999999935,
+          "p99": 19.366199999999935,
+          "p999": 19.366199999999935,
+          "max": 19.366199999999935,
+          "operationsPerSecondContribution": 12.098729016418096
+        },
+        "sqlite_busy_recovery_retry_ms": {
+          "count": 1,
+          "p50": 18.80490000000009,
+          "p95": 18.80490000000009,
+          "p99": 18.80490000000009,
+          "p999": 18.80490000000009,
+          "max": 18.80490000000009,
+          "operationsPerSecondContribution": 1.2098729016418095
+        }
+      },
+      "throughput": {
+        "allMeasuredOperationsPerSecond": 134.29589208224087
+      },
+      "cpu": {
+        "userMilliseconds": 47,
+        "systemMilliseconds": 438
+      },
+      "memoryBytes": {
+        "rssBefore": 109039616,
+        "rssAfter": 114507776,
+        "heapUsedBefore": 6234776,
+        "heapUsedAfter": 6218352,
+        "heapTotalBefore": 8388608,
+        "heapTotalAfter": 9437184
+      },
+      "correctness": {
+        "tasks": 10,
+        "runsInVerification": 10,
+        "progressRows": 30,
+        "reportRows": 10,
+        "reviewRequests": 10,
+        "acknowledgedDeliveries": 10,
+        "pendingDeliveries": 0,
+        "queueDepthAfterInlineDelivery": 0,
+        "duplicateReplaysResolvedToOriginal": 30
+      },
+      "databaseBytes": 757760,
+      "databaseCloseMs": 2.518000000000029,
+      "databaseWalBytesAfterClose": 0,
+      "instrumentationLimits": [
+        "SQLite lock contention is one 10 ms busy-timeout conflict and one successful retry; it does not model sustained multi-connection lock or storage pressure.",
+        "Queue depth is sampled after the synchronous report and delivery batch; peak transient depth is not sampled.",
+        "Allocation counts are unavailable; before/after heap and RSS are observational and include runtime noise."
+      ]
+    },
+    {
+      "logicalWorkers": 100,
+      "workload": {
+        "maximumActiveRuns": 100,
+        "executionBatches": 1,
+        "control": "lease heartbeat",
+        "progressMessagesPerWorker": 3,
+        "terminalReports": 100,
+        "reviewRequestFanOut": "one review.requested per successful report",
+        "artifactReferences": true,
+        "duplicateProgressReplaysPerWorker": 1,
+        "externalWorkerProcesses": 0
+      },
+      "readiness": {
+        "databaseInitializationMs": 18.198599999999715,
+        "sdkReadinessMs": 0.016300000000228465
+      },
+      "phaseMilliseconds": {
+        "setup": 1571.4409999999998,
+        "claimBatch": 908.7102,
+        "messageBatch": 5953.629599999999,
+        "reportAndInlineReviewBatch": 2254.4308999999994,
+        "total": 10688.3888
+      },
+      "eventLoopDelayMilliseconds": {
+        "sampleCount": 3,
+        "min": 12.238848,
+        "p50": 16.465919,
+        "p95": 18.317311,
+        "p99": 18.317311,
+        "p999": 18.317311,
+        "max": 18.317311,
+        "samplingResolutionMs": 10
+      },
+      "eventLoopTimerDriftMs": 11153.9684,
+      "electronRendererResponsiveness": {
+        "samples": 1121,
+        "timerDelayMilliseconds": {
+          "count": 1121,
+          "p50": 0,
+          "p95": 6.5,
+          "p99": 6.800000011920929,
+          "p999": 11.099999994039536,
+          "max": 14.399999991059303
+        },
+        "mainToRendererRoundTripMs": 1.8373999999985244,
+        "backgroundThrottling": false,
+        "isolatedRendererProcess": true
+      },
+      "sqlite": {
+        "isolatedImmediateTransactionSamples": 100,
+        "transactionLatencyMilliseconds": {
+          "count": 100,
+          "p50": 3.2120000000013533,
+          "p95": 3.7783999999992375,
+          "p99": 4.0591999999996915,
+          "p999": 4.08679999999913,
+          "max": 4.08679999999913
+        },
+        "transactionDatabaseInitializationMs": 23.133700000000317,
+        "transactionDatabaseCloseMs": 0.48430000000007567,
+        "transactionDatabaseBytes": 413696,
+        "busyTimeoutMs": 10,
+        "busyLockWaitMs": 76.74229999999989,
+        "busyErrors": 1,
+        "retriesAfterUnlock": 1
+      },
+      "operations": {
+        "register_worker_ms": {
+          "count": 100,
+          "p50": 10.651100000000042,
+          "p95": 11.668700000000172,
+          "p99": 13.040100000000166,
+          "p999": 17.527000000000044,
+          "max": 17.527000000000044,
+          "operationsPerSecondContribution": 9.355947081565745
+        },
+        "create_task_ms": {
+          "count": 100,
+          "p50": 5.10779999999977,
+          "p95": 5.932299999999941,
+          "p99": 10.629899999999907,
+          "p999": 12.038000000000011,
+          "max": 12.038000000000011,
+          "operationsPerSecondContribution": 9.355947081565745
+        },
+        "claim_task_ms": {
+          "count": 100,
+          "p50": 8.802999999999884,
+          "p95": 10.54280000000017,
+          "p99": 13.66070000000036,
+          "p999": 14.472899999999754,
+          "max": 14.472899999999754,
+          "operationsPerSecondContribution": 9.355947081565745
+        },
+        "heartbeat_ms": {
+          "count": 100,
+          "p50": 19.20429999999942,
+          "p95": 20.75720000000001,
+          "p99": 25.276299999999537,
+          "p999": 28.079900000000634,
+          "max": 28.079900000000634,
+          "operationsPerSecondContribution": 9.355947081565745
+        },
+        "progress_message_ms": {
+          "count": 300,
+          "p50": 12.579000000001543,
+          "p95": 13.880500000000211,
+          "p99": 19.39469999999983,
+          "p999": 25.479299999999057,
+          "max": 25.479299999999057,
+          "operationsPerSecondContribution": 28.067841244697235
+        },
+        "duplicate_progress_replay_ms": {
+          "count": 300,
+          "p50": 0.5244000000002416,
+          "p95": 0.7658999999994194,
+          "p99": 0.9632999999994354,
+          "p999": 1.100800000000163,
+          "max": 1.100800000000163,
+          "operationsPerSecondContribution": 28.067841244697235
+        },
+        "report_with_inline_review_delivery_ms": {
+          "count": 100,
+          "p50": 22.273800000000847,
+          "p95": 23.76299999999901,
+          "p99": 31.191200000001118,
+          "p999": 31.29569999999876,
+          "max": 31.29569999999876,
+          "operationsPerSecondContribution": 9.355947081565745
+        },
+        "sqlite_busy_recovery_retry_ms": {
+          "count": 1,
+          "p50": 18.130300000000716,
+          "p95": 18.130300000000716,
+          "p99": 18.130300000000716,
+          "p999": 18.130300000000716,
+          "max": 18.130300000000716,
+          "operationsPerSecondContribution": 0.09355947081565745
+        }
+      },
+      "throughput": {
+        "allMeasuredOperationsPerSecond": 103.00897736803886
+      },
+      "cpu": {
+        "userMilliseconds": 1438,
+        "systemMilliseconds": 6063
+      },
+      "memoryBytes": {
+        "rssBefore": 111681536,
+        "rssAfter": 121040896,
+        "heapUsedBefore": 6347888,
+        "heapUsedAfter": 6372264,
+        "heapTotalBefore": 9437184,
+        "heapTotalAfter": 11272192
+      },
+      "correctness": {
+        "tasks": 100,
+        "runsInVerification": 100,
+        "progressRows": 300,
+        "reportRows": 100,
+        "reviewRequests": 100,
+        "acknowledgedDeliveries": 100,
+        "pendingDeliveries": 0,
+        "queueDepthAfterInlineDelivery": 0,
+        "duplicateReplaysResolvedToOriginal": 300
+      },
+      "databaseBytes": 4329472,
+      "databaseCloseMs": 4.825000000000728,
+      "databaseWalBytesAfterClose": 0,
+      "instrumentationLimits": [
+        "SQLite lock contention is one 10 ms busy-timeout conflict and one successful retry; it does not model sustained multi-connection lock or storage pressure.",
+        "Queue depth is sampled after the synchronous report and delivery batch; peak transient depth is not sampled.",
+        "Allocation counts are unavailable; before/after heap and RSS are observational and include runtime noise."
+      ]
+    }
+  ],
+  "recovery": {
+    "scenario": "SQLite close/reopen with an expired worker lease",
+    "simulatedBackendRestart": true,
+    "abruptProcessCrash": false,
+    "abandonedRunId": "ab0bd73d-0668-4095-8bd4-3d77bc4825d6",
+    "databaseReopenMs": 2.900100000000748,
+    "sdkInitializationMs": 0.016700000000128057,
+    "recoveryDurationMs": 5.804700000000594,
+    "correctness": {
+      "runState": "recovery_required",
+      "recoveryState": "recovery_required",
+      "recoveryRecordState": "recovery_required",
+      "automaticReplacement": false
+    }
+  },
+  "abruptBackendRestart": {
+    "scenario": "abrupt termination of a separate Electron-Node backend child with an active SDK lease",
+    "childReadinessMs": 163.91020000000026,
+    "abruptTerminationMs": 14.290599999998449,
+    "childExitCode": null,
+    "childExitSignal": "SIGTERM",
+    "startupReconciliationMs": 8.721400000000358,
+    "reconciliationRecords": 1,
+    "correctness": {
+      "runState": "recovery_required",
+      "recoveryState": "recovery_required",
+      "recoveryRecordState": "recovery_required",
+      "automaticReplacement": false
+    }
+  },
+  "providerDisconnect": {
+    "scenario": "synthetic provider stream disconnect after partial content",
+    "realNetworkUsed": false,
+    "completionMs": 66.64350000000013,
+    "emittedEvents": [
+      "started",
+      "delta",
+      "completed"
+    ],
+    "correctness": {
+      "runState": "rejected",
+      "outcome": "failed",
+      "acceptanceDecisions": 0
+    }
+  },
+  "ownedProcessCancellation": {
+    "scenario": "native Windows Job Object cancellation of one worker process tree",
+    "cancellationLatencyMs": 1.0967000000000553,
+    "verifiedCleanup": true,
+    "activeProcessesAfterCleanup": 0,
+    "observedProcessesBeforeCancellation": 3,
+    "cancellationStorm": false
+  },
+  "ownedProcessCancellationStorm": {
+    "scenario": "concurrent native Windows Job Object cancellation of independent worker process trees",
+    "concurrentTrees": 10,
+    "observedProcessesBeforeCancellation": 30,
+    "cancellationLatencyMs": {
+      "count": 10,
+      "p50": 7.837399999998524,
+      "p95": 8.105799999999363,
+      "p99": 8.105799999999363,
+      "p999": 8.105799999999363,
+      "max": 8.105799999999363
+    },
+    "wallClockDurationMs": 9.105999999999767,
+    "verifiedCleanupCount": 10,
+    "activeProcessesAfterCleanup": 0,
+    "correctness": "all trees were ready before concurrent cancellation; every Job Object reported zero active processes"
+  },
+  "storagePressure": {
+    "scenario": "disposable SQLite database capped at eight pages above schema size",
+    "pageSizeBytes": 4096,
+    "startPageCount": 101,
+    "pageLimit": 109,
+    "committedRows": 2,
+    "attemptedPayloadBytes": 32768,
+    "fullErrorCode": "SQLITE_FULL",
+    "pressureDurationMs": 8.496100000000297,
+    "integrity": "ok"
+  },
+  "sustainedLockContention": {
+    "scenario": "ten SQLite writer timeouts while one connection holds BEGIN IMMEDIATE",
+    "busyTimeoutMs": 10,
+    "contentionAttempts": 10,
+    "conflictWaitMs": {
+      "count": 10,
+      "p50": 66.49749999999949,
+      "p95": 74.97960000000057,
+      "p99": 74.97960000000057,
+      "p999": 74.97960000000057,
+      "max": 74.97960000000057
+    },
+    "retryAfterContentionMs": 32.619300000000294,
+    "busyErrors": 10,
+    "committedRows": 1,
+    "correctness": "all contended transactions rolled back; one explicit retry committed after lock release"
+  },
+  "outboxBacklog": {
+    "scenario": "1,000 durable non-semantic outbox events accumulated before publisher recovery",
+    "queuedEvents": 1000,
+    "peakQueueDepth": 1000,
+    "enqueueDurationMs": 4057.2692000000025,
+    "recoveryDurationMs": 3717.017599999999,
+    "recoveryBatchLimit": 100,
+    "batchSizes": [
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100,
+      100
+    ],
+    "publishedCount": 1000,
+    "pendingAfterDrain": 0,
+    "throughputEventsPerSecond": 269.03289346813966,
+    "auditRows": 1000,
+    "outboxRows": 1000
+  },
+  "confidence": {
+    "repetitionsPerScale": 1,
+    "variance": "No repeat trials are included; this run does not estimate run-to-run variance.",
+    "quantiles": "Latency quantiles are empirical over operations in one run. For low operation counts (especially one worker), p95/p99/p99.9 reduce to one or a few observations and are not stable distribution estimates."
+  },
+  "interpretation": "Synthetic in-process workload. Logical workers are SDK records, not 1/10/100/1000 external worker processes. The current SDK caps active runs at 100, so larger scales are executed in bounded claim/message/report batches rather than pretending all logical workers are concurrently active. Results are a local baseline only and do not establish production capacity or an SLA. Correctness assertions run before timing results are saved.",
+  "unmeasured": [
+    "Renderer UI frame paint/input responsiveness; this harness measures an isolated renderer's timer delay and main-to-renderer JavaScript round-trip, not pixel paints or user input.",
+    "SDK-wide cancellation (the concurrent cancellation probe exercises native-owned process trees, not SDK task cancellation).",
+    "Live external provider disconnect/reconnect behavior; only an injected synthetic mid-stream disconnect is measured, with no network call.",
+    "Abrupt termination of the main Electron app or OS/power-loss crashes; a separate Electron-Node backend child crash and startup reconciliation is measured.",
+    "OS-level disk-full behavior and extended SQLite lock contention beyond ten bounded conflicts; storage pressure and ten 10 ms lock timeouts use disposable database simulations.",
+    "Transient in-memory delivery queue depth (the SDK uses synchronous SQLite delivery and has no separate queue) and exact allocation counts; durable outbox depth/recovery and before/after heap/RSS are measured."
+  ]
+}

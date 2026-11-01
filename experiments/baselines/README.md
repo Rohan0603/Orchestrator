@@ -59,15 +59,16 @@ all measured operation classes over that same full workload duration.
 These measurements are synthetic local baseline data, not service capacity or
 SLA claims. Logical workers are database-backed worker records. SDK command
 latency includes the synchronous SQLite and orchestration work inside each
-command; it does not isolate SQLite transaction time. The first harness does
-not yet measure Electron renderer responsiveness, abrupt worker/backend process
-crashes, provider disconnects, cancellation, storage pressure, sustained
-multi-connection SQLite lock contention, peak transient queue depth, or
-allocation counts. The busy probe is one 10 ms timeout conflict and a retry
-after releasing the lock; it is not a sustained contention test. These need
-separate runtime/fault fixtures before ORC-34 acceptance. Per-scale operation
-quantiles and cross-run aggregates are descriptive; small sample counts do not
-establish stable distributions or capacity.
+command; it does not isolate SQLite transaction time. Later sections document
+separate renderer, process crash/recovery, provider-stream interruption,
+process cancellation, storage-pressure, lock-contention, and durable-outbox
+probes. They are bounded local simulations and do not establish production
+behavior. The SDK delivery path is synchronous and SQLite-backed, so it has no
+separate transient in-memory delivery queue to sample. Heap/RSS are sampled
+before and after workloads; Node does not expose reliable per-operation
+allocation counts. Per-scale operation quantiles and cross-run aggregates are
+descriptive; small sample counts do not establish stable distributions or
+capacity.
 
 ## Latest bounded run — 2 November 2026
 
@@ -179,10 +180,11 @@ acknowledged review requests, 3,000 idempotent replays, and zero pending
 deliveries. This remains a synthetic bounded-record workload, not 1,000
 concurrent workers or service capacity.
 
-ORC-34 remains In Progress. Full Electron responsiveness, sustained SQLite
-contention/storage pressure, allocation counts, provider disconnect, real
-process/backend crash recovery, cancellation, and recovery-duration workloads
-still need separate fixtures and evidence.
+At this checkpoint, ORC-34 remained In Progress. Full Electron responsiveness,
+sustained SQLite contention/storage pressure, allocation counts, provider
+disconnect, process/backend crash recovery, cancellation, and recovery-duration
+workloads still needed separate fixtures. Later sections record the bounded
+follow-up probes and their limits.
 
 The canonical `npm run benchmark:baseline` rerun on the reviewed harness exited
 0 and retained `ts-baseline-2026-11-01T20-25-00.478Z-24620.json`; correctness
@@ -303,11 +305,60 @@ without a publisher, then drains them through `EventRepository.pending()` and
 1,000. Enqueue took 4.07 s; recovery took 3.73 s, about 268 events/s. All
 1,000 audit rows had one outbox row, all were published, and pending depth
 returned to zero. This measures the durable generic outbox, not semantic
-`internal.message` delivery, external publish confirmation, in-memory queue
-backpressure, or the in-memory queue's peak depth.
+`internal.message` delivery or external publish confirmation. The SDK delivery
+path is synchronous and SQLite-backed; it has no separate transient in-memory
+delivery queue or in-memory backpressure queue.
 
-ORC-34 remains In Progress. Still open: product UI paint/input latency and full
-product startup/readiness; OS/power-loss crash behavior and worker-process
-crash duration; live provider reconnect; concurrent cancellation stress;
-extended SQLite lock contention; OS-level disk pressure; in-memory queue peak
-depth and allocation counts; and repeated recovery/cancellation distributions.
+At this checkpoint, remaining qualification limits were product UI paint/input
+latency and full product startup/readiness; OS/power-loss crash behavior; live
+provider reconnect; SDK-wide cancellation; extended SQLite lock contention;
+OS-level disk pressure; and repeated recovery/cancellation distributions.
+These remain limitations of the later baseline evidence and are not described
+as measured here. Exact allocation counts are unavailable; heap/RSS snapshots
+are included in each scale record.
+
+## Current-source repeated trials, 1,000 scale and cancellation stress — 2 November 2026
+
+Three independent default runs passed on the same clean tracked source
+revision `b72dbfd1ed6153570d7f781ffee4c966e5b382fb`, Windows 11 x64 build
+26200, Node 24.22.0, Electron 44.9.3, and three progress messages per worker:
+
+* `ts-baseline-2026-11-01T20-53-57.669Z-17224.json`
+* `ts-baseline-2026-11-01T20-55-00.861Z-28152.json`
+* `ts-baseline-2026-11-01T20-55-52.612Z-8368.json`
+
+Each run passed lifecycle, ordered progress, terminal-report, inline review
+delivery, duplicate replay, and zero-pending-delivery checks at 1/10/100. The
+table gives min / median / max total workload and aggregate measured throughput
+over three runs. It also gives the median report+inline-review p95 and median
+isolated renderer timer p95. These are local descriptive observations; three
+runs do not establish a capacity target or inferential confidence interval.
+
+| Logical workers | Total workload ms | Aggregate measured ops/s | Report + review p95 ms (median) | Renderer timer p95 ms (median) |
+| --: | --: | --: | --: | --: |
+| 1 | 83.9 / 94.8 / 99.6 | 120.4 / 126.6 / 143.0 | 18.59 | 6.70 |
+| 10 | 803.9 / 814.0 / 828.4 | 134.0 / 136.4 / 138.1 | 18.05 | 6.60 |
+| 100 | 10,702.6 / 10,761.6 / 10,821.7 | 101.7 / 102.3 / 102.9 | 25.79 | 6.50 |
+
+One current-source 1,000-logical-worker run is preserved as
+`ts-baseline-2026-11-01T20-56-53.551Z-8120.json`. It used ten sequential
+batches capped at 100 active runs; the full benchmark command took 189.37 s
+and the measured workload was 162,980.0 ms at 67.50 aggregate operations/s.
+Correctness passed for 1,000 tasks/runs, 3,000 progress messages and duplicate
+replays, 1,000 terminal reports/review requests/acknowledgements, and zero
+pending delivery. The 1,000 isolated SQLite transaction samples had p50/p95
+3.28/4.01 ms. The database was 39,116,800 bytes. Point-in-time RSS and heap
+deltas were +138,014,720 and +18,170,480 bytes. This is bounded logical-record
+processing, not 1,000 concurrent workers or external processes.
+
+The harness now includes a bounded native cancellation stress probe. The
+final focused rerun is `ts-baseline-2026-11-01T21-04-23.684Z-23572.json`; it
+passed the 1/10/100 workload and all ten cancellation cleanups. It records ten
+independently Job Object-owned fixture trees (30 processes) ready before the
+cancellation barrier. Ten concurrent cancellation calls all verified zero
+active processes; per-tree latency p50/p95 was 7.54/7.79 ms and batch wall time
+was 9.11 ms (this rerun's per-tree p50/p95 was 7.84/8.11 ms). This is native process-tree stress only, not SDK task cancellation
+or production concurrency qualification. It changes no product capacity or
+runtime behavior. The artifact was measured from base revision `b72dbfd` with
+tracked-diff SHA-256
+`c228a25dde2d4f3805c2db4577ce6d1227969948de7e31183fc09aa7a8350790`.
