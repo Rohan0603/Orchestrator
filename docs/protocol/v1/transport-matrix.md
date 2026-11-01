@@ -24,6 +24,8 @@ This matrix records the behavior exercised by the ORC-36 implementation. It desc
 
 The Electron IPC security suite confirms that renderer callers cannot invoke arbitrary main-process APIs. ORC-36 deliberately adds no renderer bridge to the Rust client. Wiring application-wide Electron shutdown to this client belongs to the thin-main integration issue ORC-43; the client API's bounded `close()` behavior is covered here.
 
+The 1,000-request Windows x64 run is preserved at `experiments/ipc/2026-11-02-orc-36-rust-stdio-final.json` (implementation SHA `75edb0b8cf5f9d04f266f7de18fa7770bc6c6592`, Node 24.19.0, AMD Ryzen 5 4600H). Sequential real-process IPC measured 1,490 requests/s, p50 0.625 ms and p95 1.004 ms. The codec-only control measured 61,814 encode/decode operations/s, p50 0.014 ms and p95 0.020 ms; observed p50 delta was 0.612 ms. These microbenchmarks are diagnostic and are not product SLOs.
+
 ## Transport overhead measurement
 
 Run `npm run build:rust-core`, `npm run build`, then:

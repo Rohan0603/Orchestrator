@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { cpus, release } from "node:os";
 import { performance } from "node:perf_hooks";
 
 const args = new Map();
@@ -69,6 +70,7 @@ try {
   }
 
   const ipcSamples = [];
+  const ipcStartedAt = performance.now();
   for (let index = 0; index < count; index += 1) {
     const startedAt = performance.now();
     const result = await client.request({
@@ -79,8 +81,10 @@ try {
     if (!result.ok) throw new Error(`Health request failed with ${result.error.code}`);
     ipcSamples.push(performance.now() - startedAt);
   }
+  const ipcElapsedMs = performance.now() - ipcStartedAt;
 
   const codecSamples = [];
+  const codecStartedAt = performance.now();
   for (let index = 0; index < count; index += 1) {
     const startedAt = performance.now();
     const requestFrame = encodeFrame({ ...health, messageId: `codec-${index}`, correlationId: `codec-correlation-${index}` });
@@ -90,6 +94,7 @@ try {
     }
     codecSamples.push(performance.now() - startedAt);
   }
+  const codecElapsedMs = performance.now() - codecStartedAt;
 
   const result = {
     benchmark: "agentconductor-rust-stdio-ipc-v1",
@@ -97,10 +102,10 @@ try {
     recordedAt: new Date().toISOString(),
     environment: {
       platform: process.platform,
-      release: process.release.name,
+      osRelease: release(),
       nodeVersion: process.version,
       architecture: process.arch,
-      cpu: process.env.PROCESSOR_IDENTIFIER ?? "unknown"
+      cpu: (cpus()[0]?.model ?? process.env.PROCESSOR_IDENTIFIER ?? "unknown").trim()
     },
     transport: {
       type: "private-child-stdio",
@@ -108,7 +113,11 @@ try {
       requestMode: "sequential-health-roundtrip",
       count,
       codecOnlyControl: "encode-decode-request-and-response",
+      ipcElapsedMs: Number(ipcElapsedMs.toFixed(3)),
+      ipcRequestsPerSecond: Number((count * 1000 / ipcElapsedMs).toFixed(1)),
       ipcRoundTrip: summarize(ipcSamples),
+      codecElapsedMs: Number(codecElapsedMs.toFixed(3)),
+      codecOperationsPerSecond: Number((count * 1000 / codecElapsedMs).toFixed(1)),
       codecOnly: summarize(codecSamples),
       p50DeltaMs: Number((percentile([...ipcSamples].sort((a, b) => a - b), 0.5) - percentile([...codecSamples].sort((a, b) => a - b), 0.5)).toFixed(4))
     }

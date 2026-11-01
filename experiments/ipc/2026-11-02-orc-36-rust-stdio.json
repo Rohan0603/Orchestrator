@@ -1,0 +1,36 @@
+{
+  "benchmark": "agentconductor-rust-stdio-ipc-v1",
+  "sourceRevision": "75edb0b8cf5f9d04f266f7de18fa7770bc6c6592",
+  "recordedAt": "2026-11-01T21:37:39.671Z",
+  "environment": {
+    "platform": "win32",
+    "release": "node",
+    "nodeVersion": "v24.19.0",
+    "architecture": "x64",
+    "cpu": "unknown"
+  },
+  "transport": {
+    "type": "private-child-stdio",
+    "framing": "4-byte-big-endian-length-prefixed-utf8-json",
+    "requestMode": "sequential-health-roundtrip",
+    "count": 1000,
+    "codecOnlyControl": "encode-decode-request-and-response",
+    "ipcRoundTrip": {
+      "samples": 1000,
+      "minMs": 0.42020000000002256,
+      "p50Ms": 0.5775999999999613,
+      "p95Ms": 0.9313999999999965,
+      "maxMs": 2.330500000000029,
+      "meanMs": 0.6254
+    },
+    "codecOnly": {
+      "samples": 1000,
+      "minMs": 0.012200000000007094,
+      "p50Ms": 0.01340000000004693,
+      "p95Ms": 0.019400000000018736,
+      "maxMs": 0.5185999999999922,
+      "meanMs": 0.0153
+    },
+    "p50DeltaMs": 0.5642
+  }
+}

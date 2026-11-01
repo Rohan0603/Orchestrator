@@ -1,0 +1,40 @@
+{
+  "benchmark": "agentconductor-rust-stdio-ipc-v1",
+  "sourceRevision": "75edb0b8cf5f9d04f266f7de18fa7770bc6c6592",
+  "recordedAt": "2026-11-01T21:38:11.219Z",
+  "environment": {
+    "platform": "win32",
+    "osRelease": "10.0.26200",
+    "nodeVersion": "v24.19.0",
+    "architecture": "x64",
+    "cpu": "AMD Ryzen 5 4600H with Radeon Graphics         "
+  },
+  "transport": {
+    "type": "private-child-stdio",
+    "framing": "4-byte-big-endian-length-prefixed-utf8-json",
+    "requestMode": "sequential-health-roundtrip",
+    "count": 1000,
+    "codecOnlyControl": "encode-decode-request-and-response",
+    "ipcElapsedMs": 670.946,
+    "ipcRequestsPerSecond": 1490.4,
+    "ipcRoundTrip": {
+      "samples": 1000,
+      "minMs": 0.4880000000000564,
+      "p50Ms": 0.6253000000000384,
+      "p95Ms": 1.0044999999998936,
+      "maxMs": 2.5015999999999963,
+      "meanMs": 0.6699
+    },
+    "codecElapsedMs": 16.178,
+    "codecOperationsPerSecond": 61813.5,
+    "codecOnly": {
+      "samples": 1000,
+      "minMs": 0.012200000000007094,
+      "p50Ms": 0.013500000000021828,
+      "p95Ms": 0.020199999999931606,
+      "maxMs": 0.6607999999999947,
+      "meanMs": 0.0159
+    },
+    "p50DeltaMs": 0.6118
+  }
+}

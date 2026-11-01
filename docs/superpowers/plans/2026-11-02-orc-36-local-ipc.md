@@ -46,16 +46,18 @@
 
 **Interfaces:** `RustCoreClient.start(executablePath, options)` launches a child with private stdio and performs mandatory hello/welcome validation before returning. `request(request)` validates v1 envelopes, tracks pending replies by `messageId`, enforces deadline and bounded pending queue, and rejects malformed/mismatched responses. `close(deadlineMs)` ends stdin, waits for child close, then terminates only the owned child on deadline. No renderer API is added.
 
-- [ ] Add failing tests using the real Rust executable for hello + health/capability request/response and a fake protocol child for absent child, incompatible welcome, request timeout, abrupt exit, duplicate IDs, stale event sequence, and bounded queue saturation.
-- [ ] Run the focused suite and confirm each failure is caused by missing client behavior.
-- [ ] Implement one streaming frame decoder, a serialized bounded writer honoring `write()`/`drain`, pending request correlation checks, capability gate, timeout poisoning, ordered event sequence tracking, stderr draining, and deterministic close/reconnect.
-- [ ] Re-run focused tests; run the Electron IPC security suite to confirm renderer cannot reach the client or spawn path.
+- [x] Add failing tests using the real Rust executable for hello + health/capability request/response and a fake protocol child for absent child, incompatible welcome, request timeout, abrupt exit, duplicate IDs, stale event sequence, and bounded queue saturation.
+- [x] Run the focused suite and confirm each failure is caused by missing client behavior.
+- [x] Implement one streaming frame decoder, a serialized bounded writer honoring `write()`/`drain`, pending request correlation checks, capability gate, timeout poisoning, ordered event sequence tracking, stderr draining, and deterministic close/reconnect.
+- [x] Re-run focused tests; run the Electron IPC security suite to confirm renderer cannot reach the client or spawn path.
 
 ### Task 3: Integration evidence, compatibility matrix, and final verification
 
 **Files:** Update `docs/protocol/v1/contract.md` with the selected supervised-stdio path and identity/supervision assumptions; update `README.md` and Rust core test command counts if needed; Linear ORC-36 evidence.
 
-- [ ] Add a compatibility/fault matrix that maps each handshake/frame/process/queue failure to its observed fail-closed behavior.
-- [ ] Add a small repeatable real-transport overhead benchmark using the frozen health request; record raw revision-tagged output under a new `experiments/` path.
-- [ ] Run `cargo fmt --all --check`, `npm run build`, focused Rust IPC tests, `npm test`, and Windows packaging; verify package includes the same Rust executable revision.
-- [ ] Record the exact commands, counts, representative redacted trace, measurements, source SHA and remaining unverified conditions in ORC-36; only then mark Done.
+- [x] Add a compatibility/fault matrix that maps each handshake/frame/process/queue failure to its observed fail-closed behavior.
+- [x] Add a small repeatable real-transport overhead benchmark using the frozen health request; record raw revision-tagged output under a new `experiments/` path.
+- [ ] Re-run Windows packaging from the clean evidence commit and verify its packaged Rust executable hash and handshake build revision.
+- [ ] Record the final package command, hash/build revision and remaining unverified conditions in ORC-36; only then mark Done.
+
+**Verification record:** `cargo fmt --all --check` passed; `npm run build` passed; `npm run test:rust-core` passed 5 Rust unit + 8 Node process integration tests; `scripts/rust-core-client.test.mjs` passed 11/11; focused Electron IPC security passed 1/1; `npm test` passed all suites at their configured counts; `npm run package:win` succeeded for Windows x64; packaged and release executable SHA-256 matched at 1,703,424 bytes. The repeatable 1,000-call benchmark is recorded in `experiments/ipc/2026-11-02-orc-36-rust-stdio-final.json`. Unverified: full migrated service methods, SQLite opening/ownership cutover, actual app-wide Electron shutdown wiring (ORC-43), and release qualification remain out of scope.
