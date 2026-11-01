@@ -1,13 +1,15 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { cpus, tmpdir, totalmem } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { performance } from "node:perf_hooks";
+import { monitorEventLoopDelay, performance } from "node:perf_hooks";
 import test from "node:test";
+import Database from "better-sqlite3";
 import { openDatabase } from "../src/persistence/database";
 import { createOrchestratorSdk } from "../src/sdk";
+import type { Task } from "../src/shared/domain";
 import type { TaskAssignment, WorkerMessage, WorkerMessageInput, WorkerRegistration } from "../src/sdk/contracts";
 
 type Samples = Record<string, number[]>;
@@ -51,7 +53,7 @@ function workingTree(): {dirty: boolean; paths: string[]; trackedDiffSha256: str
   } catch { return {dirty: true, paths: ["git status unavailable"], trackedDiffSha256: null, untrackedFiles: {}}; }
 }
 
-test("TypeScript backend baseline benchmark preserves lifecycle correctness", {timeout: 600_000}, async () => {
+async function runBaselineBenchmark(): Promise<void> {
   const workers = numberList(process.env.ORCHESTRATOR_BASELINE_WORKERS, [1, 10, 100]);
   const progressMessagesPerWorker = Number(process.env.ORCHESTRATOR_BASELINE_PROGRESS_MESSAGES ?? 3);
   assert.ok(Number.isSafeInteger(progressMessagesPerWorker) && progressMessagesPerWorker >= 1 && progressMessagesPerWorker <= 100);
@@ -62,28 +64,38 @@ test("TypeScript backend baseline benchmark preserves lifecycle correctness", {t
   const outputPath = resolve(process.env.ORCHESTRATOR_BASELINE_OUTPUT ?? join("experiments", "baselines", `ts-baseline-${runId}.json`));
   const results: Array<Record<string, unknown>> = [];
 
+  let workloadFailed = false;
   try {
     for (const logicalWorkerCount of workers) {
       console.log(`ORC-34 benchmark preparing ${logicalWorkerCount} logical workers`);
+      const eventLoopDelay = monitorEventLoopDelay({resolution: 10});
+      eventLoopDelay.enable();
       const eventLoopProbeStarted = performance.now();
       const eventLoopProbe = new Promise<number>((resolvePromise) => {
         setTimeout(() => resolvePromise(Math.max(0, performance.now() - eventLoopProbeStarted - 10)), 10);
       });
+      const databaseInitializationStarted = performance.now();
       const databasePath = join(workspace, `scale-${logicalWorkerCount}.db`);
       const database = openDatabase(databasePath);
-      const sdk = createOrchestratorSdk(database, {
-        maxActiveRuns: logicalWorkerCount,
-        maxActiveRunsPerWorker: 1
-      });
+      const databaseInitializationMs = performance.now() - databaseInitializationStarted;
+      const activeRunCapacity = Math.min(logicalWorkerCount, 100);
       const samples: Samples = {};
       const cpuBefore = process.cpuUsage();
       const memoryBefore = process.memoryUsage();
       const started = performance.now();
-      const registrations: Array<{worker: WorkerRegistration; task: ReturnType<typeof sdk.createTask>}> = [];
+      const registrations: Array<{worker: WorkerRegistration; task: Task}> = [];
       const assignments: TaskAssignment[] = [];
+      const resultIndex = results.length;
+      let databaseClosed = false;
       let duplicateMessages = 0;
 
       try {
+        const sdkInitializationStarted = performance.now();
+        const sdk = createOrchestratorSdk(database, {
+          maxActiveRuns: activeRunCapacity,
+          maxActiveRunsPerWorker: 1
+        });
+        const sdkReadinessMs = performance.now() - sdkInitializationStarted;
         const setupStarted = performance.now();
         for (let index = 0; index < logicalWorkerCount; index++) {
           const worker: WorkerRegistration = timed<WorkerRegistration>(samples, "register_worker_ms", () => sdk.registerWorker({name: `baseline-worker-${index}`}));
@@ -98,56 +110,64 @@ test("TypeScript backend baseline benchmark preserves lifecycle correctness", {t
         const setupMs = performance.now() - setupStarted;
         console.log(`ORC-34 benchmark ${logicalWorkerCount}: setup complete (${setupMs.toFixed(1)} ms)`);
 
-        const claimStarted = performance.now();
-        for (const {worker} of registrations) {
-          const assignment: TaskAssignment | null = timed<TaskAssignment | null>(samples, "claim_task_ms", () => sdk.claimTask(worker.id, 60_000));
-          assert.ok(assignment, `worker ${worker.id} should claim one available task`);
-          assignments.push(assignment);
-        }
-        const claimBatchMs = performance.now() - claimStarted;
-        console.log(`ORC-34 benchmark ${logicalWorkerCount}: claims complete (${claimBatchMs.toFixed(1)} ms)`);
-
-        const messageStarted = performance.now();
-        for (let workerIndex = 0; workerIndex < registrations.length; workerIndex++) {
-          const {worker} = registrations[workerIndex]!;
-          const assignment = assignments[workerIndex]!;
-          timed(samples, "heartbeat_ms", () => sdk.heartbeat(assignment.lease.leaseToken, 60_000));
-          for (let index = 1; index <= progressMessagesPerWorker; index++) {
-            const sequence = index + 1; // sequence 1 is the persisted orchestrator handoff.
-            const key = `baseline:${assignment.run.id}:progress:${index}`;
-            const input: WorkerMessageInput = {
-              leaseToken: assignment.lease.leaseToken,
-              kind: "progress" as const,
-              sequence,
-              payload: {text: `synthetic progress ${sequence}`, artifact: {id: `artifact-${workerIndex}-${sequence}`, sizeBytes: 32}},
-              idempotencyKey: key
-            };
-            const first: WorkerMessage = timed<WorkerMessage>(samples, "progress_message_ms", () => sdk.sendWorkerMessage(worker.id, input));
-            const duplicate: WorkerMessage = timed<WorkerMessage>(samples, "duplicate_progress_replay_ms", () => sdk.sendWorkerMessage(worker.id, input));
-            assert.equal(duplicate.id, first.id, "idempotent duplicate must resolve to the original message");
-            duplicateMessages++;
+        let claimBatchMs = 0;
+        let messageBatchMs = 0;
+        let reportBatchMs = 0;
+        for (let offset = 0; offset < registrations.length; offset += activeRunCapacity) {
+          const batch = registrations.slice(offset, offset + activeRunCapacity);
+          console.log(`ORC-34 benchmark ${logicalWorkerCount}: processing logical workers ${offset + 1}-${offset + batch.length} with active capacity ${activeRunCapacity}`);
+          const claimStarted = performance.now();
+          const batchAssignments: TaskAssignment[] = [];
+          for (const {worker} of batch) {
+            const assignment: TaskAssignment | null = timed<TaskAssignment | null>(samples, "claim_task_ms", () => sdk.claimTask(worker.id, 60_000));
+            assert.ok(assignment, `worker ${worker.id} should claim one available task`);
+            assignments.push(assignment);
+            batchAssignments.push(assignment);
           }
-        }
-        const messageBatchMs = performance.now() - messageStarted;
-        console.log(`ORC-34 benchmark ${logicalWorkerCount}: progress and duplicate replay complete (${messageBatchMs.toFixed(1)} ms)`);
+          claimBatchMs += performance.now() - claimStarted;
 
-        const reportStarted = performance.now();
-        for (let index = 0; index < registrations.length; index++) {
-          const {worker} = registrations[index]!;
-          const assignment = assignments[index]!;
-          timed(samples, "report_with_inline_review_delivery_ms", () => sdk.reportTask(worker.id, {
-            leaseToken: assignment.lease.leaseToken,
-            sequence: progressMessagesPerWorker + 2,
-            outcome: "succeeded",
-            summary: "Synthetic benchmark worker completed.",
-            source: {adapterId: "orchestrator-ts-baseline-v1", sessionId: assignment.run.id},
-            evidence: [{kind: "artifact", uri: `artifact://baseline/${assignment.run.id}`, contentHash: "a".repeat(64)}]
-          }));
+          const messageStarted = performance.now();
+          for (let batchIndex = 0; batchIndex < batch.length; batchIndex++) {
+            const {worker} = batch[batchIndex]!;
+            const assignment = batchAssignments[batchIndex]!;
+            const workerIndex = offset + batchIndex;
+            timed(samples, "heartbeat_ms", () => sdk.heartbeat(assignment.lease.leaseToken, 60_000));
+            for (let index = 1; index <= progressMessagesPerWorker; index++) {
+              const sequence = index + 1; // sequence 1 is the persisted orchestrator handoff.
+              const key = `baseline:${assignment.run.id}:progress:${index}`;
+              const input: WorkerMessageInput = {
+                leaseToken: assignment.lease.leaseToken,
+                kind: "progress" as const,
+                sequence,
+                payload: {text: `synthetic progress ${sequence}`, artifact: {id: `artifact-${workerIndex}-${sequence}`, sizeBytes: 32}},
+                idempotencyKey: key
+              };
+              const first: WorkerMessage = timed<WorkerMessage>(samples, "progress_message_ms", () => sdk.sendWorkerMessage(worker.id, input));
+              const duplicate: WorkerMessage = timed<WorkerMessage>(samples, "duplicate_progress_replay_ms", () => sdk.sendWorkerMessage(worker.id, input));
+              assert.equal(duplicate.id, first.id, "idempotent duplicate must resolve to the original message");
+              duplicateMessages++;
+            }
+          }
+          messageBatchMs += performance.now() - messageStarted;
+
+          const reportStarted = performance.now();
+          for (let index = 0; index < batch.length; index++) {
+            const {worker} = batch[index]!;
+            const assignment = batchAssignments[index]!;
+            timed(samples, "report_with_inline_review_delivery_ms", () => sdk.reportTask(worker.id, {
+              leaseToken: assignment.lease.leaseToken,
+              sequence: progressMessagesPerWorker + 2,
+              outcome: "succeeded",
+              summary: "Synthetic benchmark worker completed.",
+              source: {adapterId: "orchestrator-ts-baseline-v1", sessionId: assignment.run.id},
+              evidence: [{kind: "artifact", uri: `artifact://baseline/${assignment.run.id}`, contentHash: "a".repeat(64)}]
+            }));
+          }
+          reportBatchMs += performance.now() - reportStarted;
         }
-        const reportBatchMs = performance.now() - reportStarted;
-        console.log(`ORC-34 benchmark ${logicalWorkerCount}: reports complete (${reportBatchMs.toFixed(1)} ms)`);
+        assert.equal(assignments.length, logicalWorkerCount);
+        console.log(`ORC-34 benchmark ${logicalWorkerCount}: all ${Math.ceil(logicalWorkerCount / activeRunCapacity)} bounded claim/message/report batches complete`);
         const elapsedMs = performance.now() - started;
-        const eventLoopTimerDriftMs = await eventLoopProbe;
         const cpu = process.cpuUsage(cpuBefore);
         const memoryAfter = process.memoryUsage();
         const rows = {
@@ -172,9 +192,75 @@ test("TypeScript backend baseline benchmark preserves lifecycle correctness", {t
           queueDepthAfterInlineDelivery: 0
         }, "lifecycle and delivery correctness invariants must hold before timing is considered valid");
 
+        const transactionDatabasePath = join(workspace, `transactions-${logicalWorkerCount}.db`);
+        const transactionDatabaseInitializationStarted = performance.now();
+        const transactionDatabase = openDatabase(transactionDatabasePath);
+        const transactionDatabaseInitializationMs = performance.now() - transactionDatabaseInitializationStarted;
+        const transactionSamples: number[] = [];
+        let transactionDatabaseCloseMs = 0;
+        let sqliteBusyWaitMs = 0;
+        try {
+          transactionDatabase.exec("CREATE TABLE baseline_transaction_probe (id INTEGER PRIMARY KEY, value TEXT NOT NULL)");
+          const insertProbe = transactionDatabase.prepare("INSERT INTO baseline_transaction_probe (value) VALUES (?)");
+          const insertTransaction = transactionDatabase.transaction((value: string) => insertProbe.run(value)).immediate;
+          const transactionSampleCount = Math.max(100, logicalWorkerCount);
+          for (let index = 0; index < transactionSampleCount; index++) {
+            const transactionStarted = performance.now();
+            insertTransaction(`sample-${index}`);
+            transactionSamples.push(performance.now() - transactionStarted);
+          }
+
+          const contender = new Database(transactionDatabasePath, {timeout: 10});
+          const lockOwner = new Database(transactionDatabasePath, {timeout: 10});
+          try {
+            lockOwner.exec("BEGIN IMMEDIATE");
+            const busyStarted = performance.now();
+            let busyCode: string | null = null;
+            try {
+              contender.prepare("INSERT INTO baseline_transaction_probe (value) VALUES (?)").run("contended");
+            } catch (error) {
+              busyCode = typeof error === "object" && error !== null && "code" in error ? String(error.code) : null;
+            }
+            sqliteBusyWaitMs = performance.now() - busyStarted;
+            assert.equal(busyCode, "SQLITE_BUSY", "contending writer must fail explicitly while another writer owns the immediate transaction");
+            lockOwner.exec("ROLLBACK");
+            const retryStarted = performance.now();
+            assert.equal(contender.prepare("INSERT INTO baseline_transaction_probe (value) VALUES (?)").run("retry-after-unlock").changes, 1);
+            samples.sqlite_busy_recovery_retry_ms = [performance.now() - retryStarted];
+          } finally {
+            if (lockOwner.inTransaction) lockOwner.exec("ROLLBACK");
+            lockOwner.close();
+            contender.close();
+          }
+        } finally {
+          const transactionCloseStarted = performance.now();
+          transactionDatabase.close();
+          transactionDatabaseCloseMs = performance.now() - transactionCloseStarted;
+        }
+        const transactionDatabaseBytes = statSync(transactionDatabasePath).size;
+        const transactionLatency = quantiles(transactionSamples);
+        assert.equal(transactionSamples.length, Math.max(100, logicalWorkerCount));
+
+        const eventLoopTimerDriftMs = await eventLoopProbe;
+        await new Promise<void>((resolvePromise) => setTimeout(resolvePromise, 20));
+        await new Promise<void>((resolvePromise) => setTimeout(resolvePromise, 20));
+        eventLoopDelay.disable();
+        const eventLoopDelayMs = {
+          sampleCount: eventLoopDelay.count,
+          min: eventLoopDelay.count > 0 ? eventLoopDelay.min / 1e6 : null,
+          p50: eventLoopDelay.count > 0 ? eventLoopDelay.percentile(50) / 1e6 : null,
+          p95: eventLoopDelay.count > 0 ? eventLoopDelay.percentile(95) / 1e6 : null,
+          p99: eventLoopDelay.count > 0 ? eventLoopDelay.percentile(99) / 1e6 : null,
+          p999: eventLoopDelay.count > 0 ? eventLoopDelay.percentile(99.9) / 1e6 : null,
+          max: eventLoopDelay.count > 0 ? eventLoopDelay.max / 1e6 : null,
+          samplingResolutionMs: 10
+        };
+
         results.push({
           logicalWorkers: logicalWorkerCount,
           workload: {
+            maximumActiveRuns: activeRunCapacity,
+            executionBatches: Math.ceil(logicalWorkerCount / activeRunCapacity),
             control: "lease heartbeat",
             progressMessagesPerWorker,
             terminalReports: logicalWorkerCount,
@@ -183,8 +269,21 @@ test("TypeScript backend baseline benchmark preserves lifecycle correctness", {t
             duplicateProgressReplaysPerWorker: 1,
             externalWorkerProcesses: 0
           },
+          readiness: {databaseInitializationMs, sdkReadinessMs},
           phaseMilliseconds: {setup: setupMs, claimBatch: claimBatchMs, messageBatch: messageBatchMs, reportAndInlineReviewBatch: reportBatchMs, total: elapsedMs},
+          eventLoopDelayMilliseconds: eventLoopDelayMs,
           eventLoopTimerDriftMs,
+          sqlite: {
+            isolatedImmediateTransactionSamples: transactionSamples.length,
+            transactionLatencyMilliseconds: transactionLatency,
+            transactionDatabaseInitializationMs,
+            transactionDatabaseCloseMs,
+            transactionDatabaseBytes,
+            busyTimeoutMs: 10,
+            busyLockWaitMs: sqliteBusyWaitMs,
+            busyErrors: 1,
+            retriesAfterUnlock: 1
+          },
           operations: Object.fromEntries(Object.entries(samples).map(([name, values]) => [name, {...quantiles(values), operationsPerSecondContribution: values.length / (elapsedMs / 1000)}])),
           throughput: {allMeasuredOperationsPerSecond: Object.values(samples).reduce((sum, values) => sum + values.length, 0) / (elapsedMs / 1000)},
           cpu: {userMilliseconds: cpu.user / 1000, systemMilliseconds: cpu.system / 1000},
@@ -194,19 +293,41 @@ test("TypeScript backend baseline benchmark preserves lifecycle correctness", {t
             heapTotalBefore: memoryBefore.heapTotal, heapTotalAfter: memoryAfter.heapTotal
           },
           correctness: {...rows, duplicateReplaysResolvedToOriginal: duplicateMessages},
-          databaseBytes: statSync(databasePath).size,
+          databaseBytes: 0,
+          databaseCloseMs: 0,
+          databaseWalBytesAfterClose: 0,
           instrumentationLimits: [
-            "Database size is recorded; SQLite transaction-only latency is not isolated from SDK command latency.",
+            "SQLite lock contention is one 10 ms busy-timeout conflict and one successful retry; it does not model sustained multi-connection lock or storage pressure.",
             "Queue depth is sampled after the synchronous report and delivery batch; peak transient depth is not sampled.",
             "Allocation counts are unavailable; before/after heap and RSS are observational and include runtime noise."
           ]
         });
       } finally {
-        database.close();
+        if (!databaseClosed) {
+          const closeStarted = performance.now();
+          database.close();
+          databaseClosed = true;
+          const latestResult = results[resultIndex];
+          if (latestResult) {
+            latestResult.databaseCloseMs = performance.now() - closeStarted;
+            latestResult.databaseBytes = statSync(databasePath).size;
+            const walPath = `${databasePath}-wal`;
+            latestResult.databaseWalBytesAfterClose = existsSync(walPath) ? statSync(walPath).size : 0;
+          }
+        }
+        eventLoopDelay.disable();
       }
     }
+  } catch (error) {
+    workloadFailed = true;
+    throw error;
   } finally {
-    rmSync(workspace, {recursive: true, force: true});
+    try {
+      rmSync(workspace, {recursive: true, force: true});
+    } catch (cleanupError) {
+      console.error("ORC-34 temporary workspace cleanup failed:", cleanupError);
+      if (!workloadFailed) throw cleanupError;
+    }
   }
 
   const artifact = {
@@ -226,24 +347,33 @@ test("TypeScript backend baseline benchmark preserves lifecycle correctness", {t
     runtime: {node: process.versions.node, electron: process.versions.electron ?? null, v8: process.versions.v8},
     build: {mode: "compiled TypeScript source executed by Electron Node test runner", sqliteBinding: "better-sqlite3 under Electron ABI"},
     configuration: {logicalWorkerCounts: workers, progressMessagesPerWorker},
-    eventLoopDelayMethod: "one 10 ms timer-drift probe per scale; a single sample per scale is not a p95/p99 distribution",
+    eventLoopDelayMethod: "Node perf_hooks.monitorEventLoopDelay with 10 ms resolution plus one 10 ms timer-drift probe per scale; histogram percentiles and timer drift are descriptive single-run observations, not cross-run confidence intervals",
     scales: results,
     confidence: {
       repetitionsPerScale: 1,
       variance: "No repeat trials are included; this run does not estimate run-to-run variance.",
       quantiles: "Latency quantiles are empirical over operations in one run. For low operation counts (especially one worker), p95/p99/p99.9 reduce to one or a few observations and are not stable distribution estimates."
     },
-    interpretation: "Synthetic in-process workload. Logical workers are SDK records, not 1/10/100/1000 external worker processes. Results are a local baseline only and do not establish production capacity or an SLA. Correctness assertions run before timing results are saved.",
+    interpretation: "Synthetic in-process workload. Logical workers are SDK records, not 1/10/100/1000 external worker processes. The current SDK caps active runs at 100, so larger scales are executed in bounded claim/message/report batches rather than pretending all logical workers are concurrently active. Results are a local baseline only and do not establish production capacity or an SLA. Correctness assertions run before timing results are saved.",
     unmeasured: [
       "Electron renderer responsiveness under backend load (no renderer interaction in this SDK-only harness).",
       "Native process cancellation latency and cancellation storms (the current SDK does not expose a cancellation command).",
       "Provider disconnect behavior (no provider is called by this local fixture workload).",
-      "Abrupt backend process termination and restart (database close/reopen/lease expiry fault harness is a separate qualification step).",
-      "SQLite busy/locked contention and storage pressure fault workloads.",
-      "Peak queue depth, isolated SQLite transaction latency, allocation counts, and recovery/reconciliation duration."
+      "Abrupt backend process termination/restart and recovery duration (this is not a process-level crash harness).",
+      "Storage pressure and sustained SQLite lock contention.",
+      "Peak queue depth and allocation counts; database initialization, SDK construction, and database close are measured, but full Electron readiness is not."
     ]
   };
   mkdirSync(dirname(outputPath), {recursive: true});
   writeFileSync(outputPath, `${JSON.stringify(artifact, null, 2)}\n`, {flag: "wx"});
   console.log(`ORC-34 raw benchmark evidence: ${outputPath}`);
+}
+
+test("TypeScript backend baseline benchmark preserves lifecycle correctness", {timeout: 600_000}, async () => {
+  try {
+    await runBaselineBenchmark();
+  } catch (error) {
+    console.error("ORC-34 benchmark failed before retaining evidence:", error);
+    throw error;
+  }
 });
