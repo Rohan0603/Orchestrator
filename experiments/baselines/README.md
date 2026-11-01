@@ -60,8 +60,8 @@ These measurements are synthetic local baseline data, not service capacity or
 SLA claims. Logical workers are database-backed worker records. SDK command
 latency includes the synchronous SQLite and orchestration work inside each
 command; it does not isolate SQLite transaction time. The first harness does
-not yet measure Electron renderer responsiveness, real worker/backend crash
-recovery, provider disconnects, cancellation, storage pressure, sustained
+not yet measure Electron renderer responsiveness, abrupt worker/backend process
+crashes, provider disconnects, cancellation, storage pressure, sustained
 multi-connection SQLite lock contention, peak transient queue depth, or
 allocation counts. The busy probe is one 10 ms timeout conflict and a retry
 after releasing the lock; it is not a sustained contention test. These need
@@ -187,3 +187,28 @@ still need separate fixtures and evidence.
 The canonical `npm run benchmark:baseline` rerun on the reviewed harness exited
 0 and retained `ts-baseline-2026-11-01T20-25-00.478Z-24620.json`; correctness
 passed at 1/10/100 logical workers.
+
+## Clean-close lease-expiry recovery probe — 2 November 2026
+
+Raw artifact: `ts-baseline-2026-11-01T20-29-15.489Z-23140.json`. Command:
+`npm run benchmark:baseline` (exit 0; one Electron benchmark test, correctness
+passed at 1/10/100 logical workers). This probe creates a one-millisecond SDK
+lease, cleanly closes SQLite, waits for expiry, reopens SQLite and constructs a
+new SDK instance, then attempts to claim work. The reopen took 4.04 ms, SDK
+construction 0.03 ms, and expiry reconciliation/claim 6.44 ms in this single
+host-sensitive run. It verified one run remained `recovery_required`, its
+recovery record remained `recovery_required`, and no replacement run was
+created. This measures clean database close/reopen recovery, not abrupt process
+termination or production restart safety; it is not a stable latency estimate.
+
+The immediately preceding diagnostic artifact
+`ts-baseline-2026-11-01T20-28-38.598Z-13080.json` is preserved, but excluded
+from analysis because its `sdkReadyMs` field captured database reopen only and
+was mislabeled. The harness and subsequent artifact split database reopen from
+SDK construction explicitly.
+
+ORC-34 remains In Progress. Still open: renderer responsiveness under backend
+load; full Electron startup/readiness; abrupt worker/backend process crash and
+restart; provider disconnect and cancellation behavior; sustained SQLite
+contention and storage pressure; peak queue depth and allocation counts; and
+repeated recovery/cancellation distributions.

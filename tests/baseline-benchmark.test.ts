@@ -63,6 +63,7 @@ async function runBaselineBenchmark(): Promise<void> {
   const workspace = mkdtempSync(join(tmpdir(), "orchestrator-ts-baseline-"));
   const outputPath = resolve(process.env.ORCHESTRATOR_BASELINE_OUTPUT ?? join("experiments", "baselines", `ts-baseline-${runId}.json`));
   const results: Array<Record<string, unknown>> = [];
+  let leaseExpiryRecovery: Record<string, unknown> | null = null;
 
   let workloadFailed = false;
   try {
@@ -318,6 +319,59 @@ async function runBaselineBenchmark(): Promise<void> {
         eventLoopDelay.disable();
       }
     }
+
+    // Close/reopen the SQLite-backed SDK around an abandoned lease to measure
+    // restart reconciliation. This is deliberately a clean close/reopen probe,
+    // not evidence of abrupt OS-process crash behavior.
+    {
+      const databasePath = join(workspace, "lease-recovery.db");
+      const firstDatabase = openDatabase(databasePath);
+      const firstSdk = createOrchestratorSdk(firstDatabase, {maxActiveRuns: 1, maxActiveRunsPerWorker: 1});
+      const worker = firstSdk.registerWorker({name: "baseline-recovery-worker"});
+      const task = firstSdk.createTask({
+        title: "Baseline expired-lease recovery",
+        description: "Synthetic abandoned lease used to measure recovery after SQLite reopen.",
+        acceptanceCriteria: ["expired execution is marked recovery-required", "claim is not replayed automatically"],
+        riskTier: 1
+      });
+      const assignment = firstSdk.claimTask(worker.id, 5);
+      assert.ok(assignment, "recovery probe worker should claim its task");
+      const abandonedRunId = assignment.run.id;
+      firstDatabase.close();
+
+      await new Promise<void>((resolvePromise) => setTimeout(resolvePromise, 15));
+      const restartStarted = performance.now();
+      const reopenedDatabase = openDatabase(databasePath);
+      const databaseReopenMs = performance.now() - restartStarted;
+      try {
+        const sdkInitializationStarted = performance.now();
+        const reopenedSdk = createOrchestratorSdk(reopenedDatabase, {maxActiveRuns: 1, maxActiveRunsPerWorker: 1});
+        const sdkInitializationMs = performance.now() - sdkInitializationStarted;
+        const recoveryWorker = reopenedSdk.registerWorker({name: "baseline-recovery-worker-after-reopen"});
+        const recoveryStarted = performance.now();
+        const replacement = reopenedSdk.claimTask(recoveryWorker.id, 60_000);
+        const recoveryDurationMs = performance.now() - recoveryStarted;
+        assert.equal(replacement, null, "unknown expired execution must not be automatically replayed");
+        const recoveredRun = reopenedDatabase.prepare("SELECT state,recovery_state FROM runs WHERE id=?").get(abandonedRunId) as {state: string; recovery_state: string} | undefined;
+        const recoveryRecord = reopenedDatabase.prepare("SELECT state FROM recovery WHERE run_id=?").get(abandonedRunId) as {state: string} | undefined;
+        assert.deepEqual(recoveredRun, {state: "recovery_required", recovery_state: "recovery_required"});
+        assert.deepEqual(recoveryRecord, {state: "recovery_required"});
+        assert.equal((reopenedDatabase.prepare("SELECT count(*) AS count FROM runs WHERE task_id=?").get(task.id) as {count: number}).count, 1,
+          "reconciliation must not create a replacement run");
+        leaseExpiryRecovery = {
+          scenario: "SQLite close/reopen with an expired worker lease",
+          simulatedBackendRestart: true,
+          abruptProcessCrash: false,
+          abandonedRunId,
+          databaseReopenMs,
+          sdkInitializationMs,
+          recoveryDurationMs,
+          correctness: {runState: recoveredRun.state, recoveryState: recoveredRun.recovery_state, recoveryRecordState: recoveryRecord.state, automaticReplacement: replacement !== null}
+        };
+      } finally {
+        reopenedDatabase.close();
+      }
+    }
   } catch (error) {
     workloadFailed = true;
     throw error;
@@ -349,6 +403,7 @@ async function runBaselineBenchmark(): Promise<void> {
     configuration: {logicalWorkerCounts: workers, progressMessagesPerWorker},
     eventLoopDelayMethod: "Node perf_hooks.monitorEventLoopDelay with 10 ms resolution plus one 10 ms timer-drift probe per scale; histogram percentiles and timer drift are descriptive single-run observations, not cross-run confidence intervals",
     scales: results,
+    recovery: leaseExpiryRecovery,
     confidence: {
       repetitionsPerScale: 1,
       variance: "No repeat trials are included; this run does not estimate run-to-run variance.",
