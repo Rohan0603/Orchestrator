@@ -68,6 +68,7 @@ async function runBaselineBenchmark(): Promise<void> {
   let leaseExpiryRecovery: Record<string, unknown> | null = null;
   let providerDisconnect: Record<string, unknown> | null = null;
   let ownedProcessCancellation: Record<string, unknown> | null = null;
+  let storagePressure: Record<string, unknown> | null = null;
 
   let workloadFailed = false;
   try {
@@ -470,6 +471,52 @@ async function runBaselineBenchmark(): Promise<void> {
         }
       }
     }
+
+    // Bound a throwaway SQLite database and fill it until SQLite reports
+    // SQLITE_FULL. The benchmark database and product data are not involved.
+    {
+      const databasePath = join(workspace, "storage-pressure.db");
+      const database = openDatabase(databasePath);
+      try {
+        database.exec("CREATE TABLE baseline_storage_pressure (id INTEGER PRIMARY KEY, payload BLOB NOT NULL)");
+        const startPageCount = Number((database.pragma("page_count", {simple: true}) as number));
+        const pageLimit = startPageCount + 8;
+        database.pragma(`max_page_count = ${pageLimit}`);
+        const effectivePageLimit = Number((database.pragma("max_page_count", {simple: true}) as number));
+        assert.equal(effectivePageLimit, pageLimit, "SQLite should apply the disposable database page cap");
+        const insert = database.prepare("INSERT INTO baseline_storage_pressure (payload) VALUES (?)");
+        let committedRows = 0;
+        let fullErrorCode: string | null = null;
+        const pressureStarted = performance.now();
+        for (let attempt = 0; attempt < 100; attempt++) {
+          try {
+            database.transaction(() => insert.run(Buffer.alloc(16 * 1024, 0x5a))).immediate();
+            committedRows++;
+          } catch (error) {
+            fullErrorCode = typeof error === "object" && error !== null && "code" in error ? String(error.code) : null;
+            break;
+          }
+        }
+        const pressureDurationMs = performance.now() - pressureStarted;
+        assert.ok(committedRows > 0, "storage pressure should allow writes before reaching the cap");
+        assert.equal(fullErrorCode, "SQLITE_FULL", "bounded database should fail explicitly when the page limit is reached");
+        const integrity = (database.pragma("integrity_check", {simple: true}) as string);
+        assert.equal(integrity, "ok", "failed full-database write must not corrupt the disposable database");
+        storagePressure = {
+          scenario: "disposable SQLite database capped at eight pages above schema size",
+          pageSizeBytes: Number(database.pragma("page_size", {simple: true})),
+          startPageCount,
+          pageLimit: effectivePageLimit,
+          committedRows,
+          attemptedPayloadBytes: committedRows * 16 * 1024,
+          fullErrorCode,
+          pressureDurationMs,
+          integrity
+        };
+      } finally {
+        database.close();
+      }
+    }
   } catch (error) {
     workloadFailed = true;
     throw error;
@@ -504,6 +551,7 @@ async function runBaselineBenchmark(): Promise<void> {
     recovery: leaseExpiryRecovery,
     providerDisconnect,
     ownedProcessCancellation,
+    storagePressure,
     confidence: {
       repetitionsPerScale: 1,
       variance: "No repeat trials are included; this run does not estimate run-to-run variance.",
@@ -515,7 +563,7 @@ async function runBaselineBenchmark(): Promise<void> {
       "Cancellation storms and SDK-wide cancellation (one native worker process tree is measured; concurrent cancellation stress is not).",
       "Live external provider disconnect/reconnect behavior; only an injected synthetic mid-stream disconnect is measured, with no network call.",
       "Abrupt backend process termination/restart and recovery duration (this is not a process-level crash harness).",
-      "Storage pressure and sustained SQLite lock contention.",
+      "OS-level disk-full behavior and sustained SQLite lock contention; storage pressure is simulated with a disposable SQLite max_page_count cap.",
       "Peak queue depth and allocation counts; database initialization, SDK construction, and database close are measured, but full Electron readiness is not."
     ]
   };
