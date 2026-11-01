@@ -7,6 +7,7 @@ import { dirname, join, resolve } from "node:path";
 import { monitorEventLoopDelay, performance } from "node:perf_hooks";
 import test from "node:test";
 import Database from "better-sqlite3";
+import { OpenAICompatibleAdapter } from "../src/harness/openai-compatible-adapter";
 import { openDatabase } from "../src/persistence/database";
 import { createOrchestratorSdk } from "../src/sdk";
 import type { Task } from "../src/shared/domain";
@@ -64,6 +65,7 @@ async function runBaselineBenchmark(): Promise<void> {
   const outputPath = resolve(process.env.ORCHESTRATOR_BASELINE_OUTPUT ?? join("experiments", "baselines", `ts-baseline-${runId}.json`));
   const results: Array<Record<string, unknown>> = [];
   let leaseExpiryRecovery: Record<string, unknown> | null = null;
+  let providerDisconnect: Record<string, unknown> | null = null;
 
   let workloadFailed = false;
   try {
@@ -372,6 +374,65 @@ async function runBaselineBenchmark(): Promise<void> {
         reopenedDatabase.close();
       }
     }
+
+    // Simulate a provider transport dropping after streaming starts. The fake
+    // fetch never opens a socket or contacts a real endpoint.
+    {
+      const database = openDatabase(join(workspace, "provider-disconnect.db"));
+      const sdk = createOrchestratorSdk(database);
+      const task = sdk.createTask({
+        title: "Baseline provider disconnect",
+        description: "Synthetic provider stream interruption for baseline fault measurement.",
+        acceptanceCriteria: ["interrupted provider execution cannot be accepted"],
+        riskTier: 1
+      });
+      const adapter = new OpenAICompatibleAdapter({
+        baseUrl: "http://127.0.0.1:1/v1",
+        apiKey: "synthetic-baseline-key",
+        model: "baseline-disconnect",
+        fetchImpl: async () => ({
+          ok: true,
+          status: 200,
+          headers: {get: () => null},
+          body: {
+            getReader: () => {
+              let firstRead = true;
+              return {
+                read: async () => {
+                  if (firstRead) {
+                    firstRead = false;
+                    return {done: false, value: new TextEncoder().encode('data: {"choices":[{"delta":{"content":"partial plan"}}]}\n\n')};
+                  }
+                  throw new Error("Synthetic provider stream disconnect");
+                }
+              };
+            }
+          }
+        } as unknown as Response)
+      });
+      try {
+        const started = performance.now();
+        const events = [];
+        for await (const event of sdk.streamTask(task.id, adapter)) events.push(event);
+        const completionMs = performance.now() - started;
+        const completed = events.find((event) => event.kind === "completed");
+        assert.equal(completed?.kind, "completed");
+        assert.equal(completed.outcome, "failed", "provider disconnect must remain a failed execution, not acceptance");
+        const storedRun = database.prepare("SELECT state FROM runs WHERE task_id=?").get(task.id) as {state: string} | undefined;
+        assert.deepEqual(storedRun, {state: "rejected"});
+        assert.equal((database.prepare("SELECT count(*) AS count FROM acceptance_decisions").get() as {count: number}).count, 0);
+        providerDisconnect = {
+          scenario: "synthetic provider stream disconnect after partial content",
+          realNetworkUsed: false,
+          completionMs,
+          emittedEvents: events.map((event) => event.kind),
+          correctness: {runState: storedRun.state, outcome: completed.outcome, acceptanceDecisions: 0}
+        };
+      } finally {
+        await adapter.close();
+        database.close();
+      }
+    }
   } catch (error) {
     workloadFailed = true;
     throw error;
@@ -404,6 +465,7 @@ async function runBaselineBenchmark(): Promise<void> {
     eventLoopDelayMethod: "Node perf_hooks.monitorEventLoopDelay with 10 ms resolution plus one 10 ms timer-drift probe per scale; histogram percentiles and timer drift are descriptive single-run observations, not cross-run confidence intervals",
     scales: results,
     recovery: leaseExpiryRecovery,
+    providerDisconnect,
     confidence: {
       repetitionsPerScale: 1,
       variance: "No repeat trials are included; this run does not estimate run-to-run variance.",
@@ -413,7 +475,7 @@ async function runBaselineBenchmark(): Promise<void> {
     unmeasured: [
       "Electron renderer responsiveness under backend load (no renderer interaction in this SDK-only harness).",
       "Native process cancellation latency and cancellation storms (the current SDK does not expose a cancellation command).",
-      "Provider disconnect behavior (no provider is called by this local fixture workload).",
+      "Live external provider disconnect/reconnect behavior; only an injected synthetic mid-stream disconnect is measured, with no network call.",
       "Abrupt backend process termination/restart and recovery duration (this is not a process-level crash harness).",
       "Storage pressure and sustained SQLite lock contention.",
       "Peak queue depth and allocation counts; database initialization, SDK construction, and database close are measured, but full Electron readiness is not."

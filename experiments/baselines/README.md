@@ -207,8 +207,22 @@ from analysis because its `sdkReadyMs` field captured database reopen only and
 was mislabeled. The harness and subsequent artifact split database reopen from
 SDK construction explicitly.
 
+## Synthetic provider disconnect probe — 2 November 2026
+
+Raw artifact: `ts-baseline-2026-11-01T20-31-41.110Z-24996.json`. The same
+`npm run benchmark:baseline` run passed its 1/10/100 workload correctness
+checks and injected a fake fetch response that emitted partial content before
+throwing a synthetic stream disconnect. No socket or real provider was used.
+The stream completed in 65.09 ms in this single run; the SDK stored the run as
+`rejected`, emitted `started`, `delta`, `completed`, and created no acceptance
+decision. This covers local adapter handling of a transport interruption, not
+live provider disconnect/reconnect behavior or provider-side cancellation.
+The artifact also contains another clean-close lease-expiry probe; its results
+are single-run descriptive timings only.
+
 ORC-34 remains In Progress. Still open: renderer responsiveness under backend
 load; full Electron startup/readiness; abrupt worker/backend process crash and
-restart; provider disconnect and cancellation behavior; sustained SQLite
-contention and storage pressure; peak queue depth and allocation counts; and
-repeated recovery/cancellation distributions.
+restart; live provider disconnect/reconnect and remote cancellation; native
+cancellation behavior; sustained SQLite contention and storage pressure; peak
+queue depth and allocation counts; and repeated recovery/cancellation
+distributions.
