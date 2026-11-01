@@ -7,6 +7,7 @@ import { dirname, join, resolve } from "node:path";
 import { monitorEventLoopDelay, performance } from "node:perf_hooks";
 import test from "node:test";
 import Database from "better-sqlite3";
+import { NativeOwnershipService, resolveHelperPath } from "../src/execution/native-ownership";
 import { OpenAICompatibleAdapter } from "../src/harness/openai-compatible-adapter";
 import { openDatabase } from "../src/persistence/database";
 import { createOrchestratorSdk } from "../src/sdk";
@@ -66,6 +67,7 @@ async function runBaselineBenchmark(): Promise<void> {
   const results: Array<Record<string, unknown>> = [];
   let leaseExpiryRecovery: Record<string, unknown> | null = null;
   let providerDisconnect: Record<string, unknown> | null = null;
+  let ownedProcessCancellation: Record<string, unknown> | null = null;
 
   let workloadFailed = false;
   try {
@@ -433,6 +435,41 @@ async function runBaselineBenchmark(): Promise<void> {
         database.close();
       }
     }
+
+    if (process.platform === "win32") {
+      const helperPath = resolveHelperPath(process.cwd(), false, "");
+      if (existsSync(helperPath)) {
+        const fixtureDirectory = join(workspace, "owned-cancellation");
+        mkdirSync(fixtureDirectory, {recursive: true});
+        const service = new NativeOwnershipService(helperPath);
+        const correlation = {runId: "baseline-cancel-run", attemptId: "baseline-cancel-attempt", nonce: runId};
+        try {
+          await service.start();
+          await service.launchFixture(fixtureDirectory, correlation);
+          const markerNames = ["worker.started", "child.started", "grandchild.started"];
+          const markerDeadline = Date.now() + 2000;
+          while (markerNames.some((name) => !existsSync(join(fixtureDirectory, name))) && Date.now() < markerDeadline) {
+            await new Promise<void>((resolvePromise) => setTimeout(resolvePromise, 10));
+          }
+          assert.ok(markerNames.every((name) => existsSync(join(fixtureDirectory, name))), "owned process tree should be running before cancellation");
+          const cancellationStarted = performance.now();
+          const cancellation = await service.cancel(correlation);
+          const cancellationLatencyMs = performance.now() - cancellationStarted;
+          assert.equal(cancellation.cleanupVerified, true);
+          assert.equal(cancellation.activeProcessesAfterCleanup, 0);
+          ownedProcessCancellation = {
+            scenario: "native Windows Job Object cancellation of one worker process tree",
+            cancellationLatencyMs,
+            verifiedCleanup: cancellation.cleanupVerified,
+            activeProcessesAfterCleanup: cancellation.activeProcessesAfterCleanup,
+            observedProcessesBeforeCancellation: markerNames.length,
+            cancellationStorm: false
+          };
+        } finally {
+          await service.close();
+        }
+      }
+    }
   } catch (error) {
     workloadFailed = true;
     throw error;
@@ -466,6 +503,7 @@ async function runBaselineBenchmark(): Promise<void> {
     scales: results,
     recovery: leaseExpiryRecovery,
     providerDisconnect,
+    ownedProcessCancellation,
     confidence: {
       repetitionsPerScale: 1,
       variance: "No repeat trials are included; this run does not estimate run-to-run variance.",
@@ -474,7 +512,7 @@ async function runBaselineBenchmark(): Promise<void> {
     interpretation: "Synthetic in-process workload. Logical workers are SDK records, not 1/10/100/1000 external worker processes. The current SDK caps active runs at 100, so larger scales are executed in bounded claim/message/report batches rather than pretending all logical workers are concurrently active. Results are a local baseline only and do not establish production capacity or an SLA. Correctness assertions run before timing results are saved.",
     unmeasured: [
       "Electron renderer responsiveness under backend load (no renderer interaction in this SDK-only harness).",
-      "Native process cancellation latency and cancellation storms (the current SDK does not expose a cancellation command).",
+      "Cancellation storms and SDK-wide cancellation (one native worker process tree is measured; concurrent cancellation stress is not).",
       "Live external provider disconnect/reconnect behavior; only an injected synthetic mid-stream disconnect is measured, with no network call.",
       "Abrupt backend process termination/restart and recovery duration (this is not a process-level crash harness).",
       "Storage pressure and sustained SQLite lock contention.",
