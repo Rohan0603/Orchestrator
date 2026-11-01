@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -190,6 +190,57 @@ test("durable events atomically enter audit and outbox, then publish once", () =
       scalar<{ count: number }>(database, "SELECT count(*) AS count FROM audit_events").count,
       1
     );
+  });
+});
+
+test("TypeScript durable-event implementation matches the Rust golden fixture", () => {
+  const fixture = JSON.parse(readFileSync(
+    join(process.cwd(), "tests/fixtures/persistence/durable-event-v1.json"),
+    "utf8"
+  )) as {
+    eventType: string;
+    payloadJson: string;
+    createdAt: string;
+    correlationJson: string;
+    idempotencyKey: string;
+    expectedEventHash: string;
+  };
+  withDatabase((database) => {
+    const events = new EventRepository(database);
+    const event = events.append(
+      fixture.eventType,
+      JSON.parse(fixture.payloadJson) as unknown,
+      fixture.createdAt,
+      {
+        correlation: JSON.parse(fixture.correlationJson) as { taskId: string },
+        idempotencyKey: fixture.idempotencyKey
+      }
+    );
+    assert.equal(event.eventHash, fixture.expectedEventHash);
+    assert.equal(event.payload, fixture.payloadJson);
+    assert.equal(JSON.stringify(event.correlation), fixture.correlationJson);
+    assert.deepEqual(events.pending(100, fixture.createdAt), [{
+      id: event.id,
+      eventId: event.id,
+      eventType: fixture.eventType,
+      payload: fixture.payloadJson,
+      publishedAt: null,
+      attemptCount: 0,
+      nextAttemptAt: fixture.createdAt,
+      createdAt: fixture.createdAt
+    }]);
+
+    database.exec(
+      "CREATE TRIGGER reject_fixture_outbox BEFORE INSERT ON outbox WHEN NEW.event_type='fixture.rollback' BEGIN SELECT RAISE(ABORT,'injected outbox failure'); END"
+    );
+    assert.throws(() => events.append(
+      "fixture.rollback",
+      { kind: "rollback" },
+      fixture.createdAt,
+      { idempotencyKey: "fixture-rollback" }
+    ), /injected outbox failure/);
+    assert.equal(scalar<{ count: number }>(database, "SELECT count(*) AS count FROM audit_events").count, 1);
+    assert.equal(scalar<{ count: number }>(database, "SELECT count(*) AS count FROM outbox").count, 1);
   });
 });
 

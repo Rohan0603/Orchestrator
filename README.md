@@ -28,9 +28,10 @@ SDK communicating over versioned private local IPC with a Rust
 SQLite WAL. The migration is incremental. The current TypeScript backend
 remains the behavioral and conformance baseline until each Rust service is
 migrated and qualified. ORC-35 supplies the Rust runtime skeleton and ORC-36
-adds the framed stdio protocol and handshake; only health and capability
-queries are implemented by the Rust slice so far. No completion of the target
-architecture is implied by those foundations.
+adds the framed stdio protocol and handshake. ORC-37 adds schema-13 validation,
+explicit WAL/checkpoint and backup primitives, immediate transactions, and a
+golden durable-event parity operation. No application lifecycle writes are
+routed to Rust yet; no completion of the target architecture is implied.
 
 Stage 2 adds source-level policy decisions, risk classification, one-shot
 exact-context approval contracts, and workspace/Git safety contracts. These
@@ -201,11 +202,12 @@ compatible Windows SDK.
 `npm run package:win` builds the application and creates an unsigned Windows
 x64 Electron package under `out/` using project-local Electron Packager.
 The package includes the Electron-ABI-149 native SQLite binding and the Rust
-runtime at `resources/orchestrator-core.exe`. The Rust runtime is currently a
-separately launchable skeleton: it reports version/capability metadata and
-readiness, writes structured logs to stderr, and shuts down on stdin EOF or
-Ctrl+C. It does not yet own orchestration state, implement framed IPC, or get
-launched by Electron. Packaging inclusion is defined but not release-qualified.
+runtime at `resources/orchestrator-core.exe`. The Rust runtime implements
+framed IPC and can validate an explicitly configured existing schema-13
+database with `serve --database <path>`. It does not yet own application
+lifecycle writes or get launched by Electron. WAL stays off unless
+`--enable-wal` is explicitly selected. Packaging inclusion is defined but not
+release-qualified.
 
 Use `npm run build:rust-core` to build the Rust executable and
 `npm run test:rust-core` to run the Rust unit tests and Node-launched runtime
@@ -213,9 +215,12 @@ integration tests. `orchestrator-core --metadata` writes version, build,
 target, protocol, and capability metadata as JSON to stdout. In `serve` mode,
 stdout stays reserved for future framed IPC and JSON logs go to stderr. Exit
 code 0 means clean shutdown, 1 means runtime failure, and 2 means invalid
-arguments or configuration. Panic termination follows Rust's process panic
-exit policy and is reported through the panic hook. The skeleton does not open
-or mutate the authoritative SQLite database.
+arguments, configuration, or database validation. Panic termination follows
+Rust's process panic exit policy and is reported through the panic hook. The
+current Electron application still opens and mutates its authoritative
+database through TypeScript; see
+[`docs/persistence/rust-sqlite-cutover.md`](docs/persistence/rust-sqlite-cutover.md)
+for the exact migration and rollback boundary.
 
 This is an unmanaged application directory, not an installer or signed release.
 Clean-machine installation, process cancellation qualification, independent

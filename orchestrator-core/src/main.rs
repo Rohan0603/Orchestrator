@@ -1,5 +1,6 @@
 use anyhow::Context;
 use orchestrator_core::ipc::{self, ShutdownReason};
+use orchestrator_core::storage::DatabaseStore;
 use orchestrator_core::{CoreError, PROTOCOL_VERSION, RuntimeConfig, metadata};
 use serde_json::json;
 use std::env;
@@ -13,7 +14,11 @@ enum Command {
     Metadata,
     Version,
     Help,
-    Serve(Option<PathBuf>),
+    Serve {
+        config_path: Option<PathBuf>,
+        database_path: Option<PathBuf>,
+        enable_wal: bool,
+    },
 }
 
 #[tokio::main]
@@ -46,11 +51,15 @@ async fn main() -> ExitCode {
         }
         Command::Help => {
             println!(
-                "orchestrator-core [serve [--config <path>] | --metadata | --version | --help]"
+                "orchestrator-core [serve [--config <path>] [--database <path> [--enable-wal]] | --metadata | --version | --help]"
             );
             ExitCode::SUCCESS
         }
-        Command::Serve(config_path) => {
+        Command::Serve {
+            config_path,
+            database_path,
+            enable_wal,
+        } => {
             let environment_log_level = env::var("ORCHESTRATOR_CORE_LOG_LEVEL").ok();
             let config = match RuntimeConfig::load(config_path.as_deref(), environment_log_level) {
                 Ok(config) => config,
@@ -64,6 +73,31 @@ async fn main() -> ExitCode {
                 }
             };
             init_logging(&config.log_level);
+            let store = match database_path.as_deref() {
+                Some(path) => match DatabaseStore::open_existing(path) {
+                    Ok(mut store) => {
+                        if enable_wal && let Err(error) = store.enable_wal() {
+                            tracing::error!(
+                                event = "backend.startup_rejected",
+                                error_code = CoreError::Database.code()
+                            );
+                            let _ = error;
+                            return ExitCode::from(2);
+                        }
+                        Some(store)
+                    }
+                    Err(error) => {
+                        tracing::error!(
+                            event = "backend.startup_rejected",
+                            error_code = CoreError::Database.code()
+                        );
+                        let _ = error;
+                        return ExitCode::from(2);
+                    }
+                },
+                None => None,
+            };
+            let database_info = store.as_ref().map(|store| store.info().clone());
             let runtime_metadata = metadata();
             tracing::info!(
                 event = "backend.starting",
@@ -74,7 +108,7 @@ async fn main() -> ExitCode {
                 state = "starting",
                 authoritative_state_mutated = false
             );
-            match ipc::serve_stdio().await {
+            match ipc::serve_stdio(database_info).await {
                 Ok(reason) => {
                     log_stopping(reason);
                     ExitCode::SUCCESS
@@ -94,7 +128,11 @@ async fn main() -> ExitCode {
 fn parse_command(args: impl Iterator<Item = String>) -> Result<Command, CoreError> {
     let args = args.collect::<Vec<_>>();
     if args.is_empty() {
-        return Ok(Command::Serve(None));
+        return Ok(Command::Serve {
+            config_path: None,
+            database_path: None,
+            enable_wal: false,
+        });
     }
     if args == ["--metadata"] {
         return Ok(Command::Metadata);
@@ -112,18 +150,32 @@ fn parse_command(args: impl Iterator<Item = String>) -> Result<Command, CoreErro
         0
     };
     let mut config_path = None;
+    let mut database_path = None;
+    let mut enable_wal = false;
     while index < args.len() {
         match args[index].as_str() {
             "--config" if index + 1 < args.len() && config_path.is_none() => {
                 index += 1;
                 config_path = Some(PathBuf::from(&args[index]));
             }
+            "--database" if index + 1 < args.len() && database_path.is_none() => {
+                index += 1;
+                database_path = Some(PathBuf::from(&args[index]));
+            }
+            "--enable-wal" if !enable_wal => enable_wal = true,
             _ => return Err(CoreError::InvalidArguments),
         }
         index += 1;
     }
     if args.first().is_some_and(|arg| arg == "serve") || args.is_empty() {
-        Ok(Command::Serve(config_path))
+        if enable_wal && database_path.is_none() {
+            return Err(CoreError::InvalidArguments);
+        }
+        Ok(Command::Serve {
+            config_path,
+            database_path,
+            enable_wal,
+        })
     } else {
         Err(CoreError::InvalidArguments)
     }

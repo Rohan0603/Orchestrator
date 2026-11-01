@@ -1,3 +1,4 @@
+use crate::storage::DatabaseInfo;
 use crate::{PROTOCOL_VERSION, SCHEMA_VERSION, V1_METHODS, metadata};
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
@@ -61,13 +62,13 @@ struct CachedResponse {
     response: Value,
 }
 
-pub async fn serve_stdio() -> Result<ShutdownReason, IpcError> {
+pub async fn serve_stdio(database: Option<DatabaseInfo>) -> Result<ShutdownReason, IpcError> {
     let mut stdin = io::stdin();
     let mut stdout = io::stdout();
     let hello = read_frame(&mut stdin)
         .await?
         .ok_or(IpcError::HandshakeRejected)?;
-    let Some((sender_id, sender_role, welcome)) = build_welcome(&hello) else {
+    let Some((sender_id, sender_role, welcome)) = build_welcome(&hello, database.as_ref()) else {
         return Err(IpcError::HandshakeRejected);
     };
     write_frame(&mut stdout, &welcome).await?;
@@ -117,8 +118,13 @@ pub async fn serve_stdio() -> Result<ShutdownReason, IpcError> {
                     )
                 }
             } else {
-                let response =
-                    dispatch_request(&request, &sender_id, &sender_role, response_sequence);
+                let response = dispatch_request(
+                    &request,
+                    &sender_id,
+                    &sender_role,
+                    response_sequence,
+                    database.as_ref(),
+                );
                 response_order.push_back(request_id.to_owned());
                 response_cache.insert(
                     request_id.to_owned(),
@@ -147,7 +153,10 @@ pub async fn serve_stdio() -> Result<ShutdownReason, IpcError> {
     }
 }
 
-fn build_welcome(hello: &Value) -> Option<(String, String, Value)> {
+fn build_welcome(
+    hello: &Value,
+    database: Option<&DatabaseInfo>,
+) -> Option<(String, String, Value)> {
     let hello = hello.as_object()?;
     if !common_envelope(hello)
         || hello.get("kind")?.as_str()? != "hello"
@@ -191,7 +200,7 @@ fn build_welcome(hello: &Value) -> Option<(String, String, Value)> {
         "backendVersion": env!("CARGO_PKG_VERSION"),
         "buildId": env!("AGENTCONDUCTOR_BUILD_REVISION"),
         "schemaVersion": SCHEMA_VERSION,
-        "databaseSchemaVersion": 0,
+        "databaseSchemaVersion": database.map_or(0, |info| info.schema_version),
         "processSupervision": "parent-owned-stdio",
         "ready": true,
         "capabilities": capabilities
@@ -204,6 +213,7 @@ fn dispatch_request(
     authenticated_sender_id: &str,
     authenticated_sender_role: &str,
     response_sequence: u64,
+    database: Option<&DatabaseInfo>,
 ) -> Value {
     let Some(envelope) = request.as_object() else {
         return error_response(
@@ -267,7 +277,10 @@ fn dispatch_request(
         let result = json!({
             "ready": true,
             "state": "ready",
-            "database": "not_open",
+            "database": if database.is_some() { "open" } else { "not_open" },
+            "databaseSchemaVersion": database.map_or(0, |info| info.schema_version),
+            "sqliteVersion": database.map(|info| info.sqlite_version.as_str()),
+            "journalMode": database.map(|info| info.journal_mode.as_str()),
             "protocolVersion": PROTOCOL_VERSION,
             "backendVersion": env!("CARGO_PKG_VERSION"),
             "activeRuns": 0,
@@ -518,7 +531,7 @@ mod tests {
                 .expect("golden hello parses");
         let mut hello = hello;
         hello["requiredCapabilities"] = serde_json::json!(["tasks.list"]);
-        assert!(build_welcome(&hello).is_none());
+        assert!(build_welcome(&hello, None).is_none());
     }
 
     #[test]

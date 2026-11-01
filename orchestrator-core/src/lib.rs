@@ -4,6 +4,7 @@ use std::path::Path;
 use thiserror::Error;
 
 pub mod ipc;
+pub mod storage;
 
 pub const PROTOCOL_VERSION: u32 = 1;
 pub const SCHEMA_VERSION: u32 = 1;
@@ -64,6 +65,8 @@ pub enum CoreError {
     Signal(#[source] std::io::Error),
     #[error("runtime input could not be read")]
     Input(#[source] std::io::Error),
+    #[error("configured database could not be opened or validated")]
+    Database,
 }
 
 impl CoreError {
@@ -76,6 +79,7 @@ impl CoreError {
             Self::ProtocolNotReady => "IPC_NOT_IMPLEMENTED",
             Self::Signal(_) => "SHUTDOWN_SIGNAL_FAILED",
             Self::Input(_) => "STDIN_READ_FAILED",
+            Self::Database => "DATABASE_OPEN_FAILED",
         }
     }
 }

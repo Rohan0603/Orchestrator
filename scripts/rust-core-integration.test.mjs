@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
@@ -104,11 +104,60 @@ function request(messageId, method, payload = {}) {
   };
 }
 
-function spawnCore() {
-  const child = spawn(executable, ["serve"], {cwd: repositoryRoot, windowsHide: true, stdio: ["pipe", "pipe", "pipe"]});
+function spawnCore(args = ["serve"]) {
+  const child = spawn(executable, args, {cwd: repositoryRoot, windowsHide: true, stdio: ["pipe", "pipe", "pipe"]});
   const reader = createIpcFrameReader(child.stdout);
   return {child, reader};
 }
+
+test("Rust core rejects a missing database without creating it or reporting ready", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "agentconductor-rust-db-missing-"));
+  const databasePath = join(directory, "missing.sqlite");
+  const {child} = spawnCore(["serve", "--database", databasePath]);
+  let stdout = "";
+  let stderr = "";
+  child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => { stdout += chunk; });
+  child.stderr.on("data", (chunk) => { stderr += chunk; });
+  try {
+    const [exitCode, signal] = await waitForChildClose(child);
+    assert.equal(signal, null);
+    assert.equal(exitCode, 2);
+    assert.equal(stdout, "", "validation failure must happen before a protocol welcome");
+    assert.equal(existsSync(databasePath), false, "read-only startup must not create a database");
+    const events = parseJsonLogLines(stderr);
+    assert.ok(events.some((event) => getEventName(event) === "backend.startup_rejected" && (event.error_code ?? event.fields?.error_code) === "DATABASE_OPEN_FAILED"));
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) child.kill();
+    rmSync(directory, {recursive: true, force: true});
+  }
+});
+
+test("Rust core rejects a malformed database before sending a welcome", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "agentconductor-rust-db-corrupt-"));
+  const databasePath = join(directory, "corrupt.sqlite");
+  writeFileSync(databasePath, "not a sqlite database");
+  const {child} = spawnCore(["serve", "--database", databasePath]);
+  let stdout = "";
+  let stderr = "";
+  child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => { stdout += chunk; });
+  child.stderr.on("data", (chunk) => { stderr += chunk; });
+  try {
+    const [exitCode, signal] = await waitForChildClose(child);
+    assert.equal(signal, null);
+    assert.equal(exitCode, 2);
+    assert.equal(stdout, "", "malformed state must be rejected before IPC readiness");
+    assert.equal(readFileSync(databasePath, "utf8"), "not a sqlite database");
+    const events = parseJsonLogLines(stderr);
+    assert.ok(events.some((event) => getEventName(event) === "backend.startup_rejected" && (event.error_code ?? event.fields?.error_code) === "DATABASE_OPEN_FAILED"));
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) child.kill();
+    rmSync(directory, {recursive: true, force: true});
+  }
+});
 
 async function waitForChildClose(child, timeoutMs = 3000) {
   if (child.exitCode !== null || child.signalCode !== null) return [child.exitCode, child.signalCode];

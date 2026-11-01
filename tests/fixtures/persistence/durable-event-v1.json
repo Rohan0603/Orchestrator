@@ -1,0 +1,8 @@
+{
+  "eventType": "fixture.event",
+  "payloadJson": "{\"kind\":\"message\",\"text\":\"hello\"}",
+  "createdAt": "2026-11-02T00:00:00.000Z",
+  "correlationJson": "{\"taskId\":\"task-1\"}",
+  "idempotencyKey": "fixture-idempotency",
+  "expectedEventHash": "93abb2fcf67aeeb0427773dc61e121df07b98ef3af43e0ad9e524aebca6dfc96"
+}
