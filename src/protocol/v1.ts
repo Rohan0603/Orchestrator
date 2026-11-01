@@ -157,6 +157,7 @@ function validPayload(method: string, payload: Record<string, unknown>): boolean
     "plugins.execute": ["workerId", "leaseToken", "pluginId", "capability"], "artifacts.get": ["artifactId"]
   };
   if (!(stringFields[method as Method] ?? []).every((key) => typeof payload[key] === "string" && (payload[key] as string).trim().length > 0)) return false;
+  if (method === "leases.release" && !["succeeded", "failed", "cancelled", "inconclusive"].includes(String(payload.outcome))) return false;
   if ((method === "tasks.update" && !record(payload.content)) ||
       (["policy.evaluate", "approvals.request"].includes(method) && (!record(payload.context) || !("action" in payload) || !("target" in payload)))) return false;
   if (["system.health", "system.shutdown", "projects.list", "tasks.list", "messages.dispatch", "events.subscribe", "events.replay", "capabilities.list"].includes(method) && !record(payload)) return false;

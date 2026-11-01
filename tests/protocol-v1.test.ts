@@ -31,6 +31,10 @@ test("golden v1 request, response, event and startup handshake validate", () => 
   assert.equal(parseRequest(request, client).ok, true);
   assert.equal(parseRequest({ ...(request as Record<string, unknown>), traceContext: { traceparent: "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01", tracestate: "vendor=value" } }, client).ok, true);
   assert.equal(parseRequest({ ...(request as Record<string, unknown>), traceContext: { traceparent: "00-00000000000000000000000000000000-0123456789abcdef-01" } }, client).ok, false);
+  const release = parseRequest({ ...(request as Record<string, unknown>), method: "leases.release", payload: { leaseId: "lease-1", leaseToken: "token-1", outcome: "inconclusive" } }, client);
+  assert.equal(release.ok, true);
+  const replay = parseRequest({ ...(request as Record<string, unknown>), method: "events.replay", payload: { cursor: "cursor-1", limit: 20 } }, client);
+  assert.equal(replay.ok, true);
   assert.equal(parseResponse(response).ok, true);
   assert.equal(parseEvent(event).ok, true);
   assert.equal(validateHandshake(hello, welcome).ok, true);
@@ -103,6 +107,7 @@ test("requests reject bad version, unknown method, malformed payload and unauthe
   if (!malformed.ok) assert.equal(malformed.error.code, "MALFORMED_PAYLOAD");
   for (const [method, payload] of [
     ["workers.report", { leaseToken: "lease-1", sequence: 1, outcome: "succeeded", summary: "done", source: {} }],
+    ["leases.release", { leaseId: "lease-1", leaseToken: "token-1", outcome: "success" }],
     ["mcp.servers.install", { name: "server", transport: "socket" }],
     ["tasks.create", { title: "title", description: "description", acceptanceCriteria: ["done"], riskTier: "1" }]
   ] as const) {
