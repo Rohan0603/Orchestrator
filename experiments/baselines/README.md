@@ -190,7 +190,7 @@ passed at 1/10/100 logical workers.
 
 ## Clean-close lease-expiry recovery probe — 2 November 2026
 
-Raw artifact: `ts-baseline-2026-11-01T20-40-08.012Z-31796.json` (latest combined
+Raw artifact: `ts-baseline-2026-11-01T20-42-40.600Z-21964.json` (latest combined
 run; the initial standalone probe is also preserved as
 `ts-baseline-2026-11-01T20-29-15.489Z-23140.json`). Command:
 `npm run benchmark:baseline` (exit 0; one Electron benchmark test, correctness
@@ -212,7 +212,7 @@ SDK construction explicitly.
 
 ## Synthetic provider disconnect probe — 2 November 2026
 
-Raw artifact: `ts-baseline-2026-11-01T20-40-08.012Z-31796.json` (the earlier
+Raw artifact: `ts-baseline-2026-11-01T20-42-40.600Z-21964.json` (the earlier
 standalone run `ts-baseline-2026-11-01T20-31-41.110Z-24996.json` is preserved).
 The same
 `npm run benchmark:baseline` run passed its 1/10/100 workload correctness
@@ -227,7 +227,7 @@ are single-run descriptive timings only.
 
 ## Native owned-process cancellation probe — 2 November 2026
 
-Raw artifact: `ts-baseline-2026-11-01T20-40-08.012Z-31796.json` (standalone
+Raw artifact: `ts-baseline-2026-11-01T20-42-40.600Z-21964.json` (standalone
 run `ts-baseline-2026-11-01T20-33-35.524Z-16700.json` is also preserved). Command:
 `npm run benchmark:baseline` (exit 0). On Windows, the harness launches the
 existing native ownership helper's worker/child/grandchild fixture, waits until
@@ -258,9 +258,32 @@ contained exactly one row. This is a single bounded contention run; Windows
 scheduling makes measured waits longer than the configured timeout. It does
 not model an extended or production multi-writer workload.
 
-ORC-34 remains In Progress. Open measurements: renderer responsiveness under
-backend load; full Electron startup/readiness; abrupt worker/backend process
-crash and restart; live provider disconnect/reconnect and remote cancellation;
+## Electron renderer responsiveness probe — 2 November 2026
+
+The latest artifact creates a hidden, isolated Electron `BrowserWindow` with
+context isolation, sandboxing, Node integration disabled, and background timer
+throttling disabled. A 10 ms renderer timer runs while the Electron main thread
+executes each synchronous SDK/SQLite workload. The harness separately records
+data-URL renderer load time and a main-to-renderer JavaScript round-trip after
+each scale. This is a synthetic renderer responsiveness probe, not the product
+UI or visual paint/input latency.
+
+Renderer startup to `did-finish-load` was 106.7 ms. Per-scale timer interval
+delay p95/max and main-to-renderer round-trip were:
+
+| Logical workers | Renderer samples | Timer delay p95 / max (ms) | Main-to-renderer round-trip (ms) | Main-thread timer drift (ms) |
+| --: | --: | --: | --: | --: |
+| 1 | 54 | 6.80 / 6.80 | 0.82 | 472.21 |
+| 10 | 123 | 6.40 / 9.10 | 1.10 | 1,190.82 |
+| 100 | 1,122 | 6.50 / 7.90 | 1.13 | 11,162.37 |
+
+The renderer timer stayed active while the main thread's 10 ms timer drift grew
+with synchronous backend load. Results are one host-specific sample, with no
+user input or pixel paint measurement and no latency target inferred from them.
+
+ORC-34 remains In Progress. Open measurements: product UI paint/input latency;
+full product startup/readiness; abrupt worker/backend process crash and
+restart; live provider disconnect/reconnect and remote cancellation;
 concurrent cancellation stress; extended SQLite lock contention; OS-level disk
 pressure; peak queue depth and allocation counts; and repeated recovery and
 cancellation distributions.

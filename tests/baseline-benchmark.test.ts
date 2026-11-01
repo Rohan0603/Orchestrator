@@ -6,6 +6,7 @@ import { cpus, tmpdir, totalmem } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { monitorEventLoopDelay, performance } from "node:perf_hooks";
 import test from "node:test";
+import { app, BrowserWindow } from "electron";
 import Database from "better-sqlite3";
 import { NativeOwnershipService, resolveHelperPath } from "../src/execution/native-ownership";
 import { OpenAICompatibleAdapter } from "../src/harness/openai-compatible-adapter";
@@ -70,10 +71,40 @@ async function runBaselineBenchmark(): Promise<void> {
   let ownedProcessCancellation: Record<string, unknown> | null = null;
   let storagePressure: Record<string, unknown> | null = null;
   let sustainedLockContention: Record<string, unknown> | null = null;
+  let rendererWindow: BrowserWindow | undefined;
+  let electronRendererStartupMs: number | null = null;
 
   let workloadFailed = false;
   try {
+    await app.whenReady();
+    const rendererStartupStarted = performance.now();
+    rendererWindow = new BrowserWindow({
+      show: false,
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+        backgroundThrottling: false
+      }
+    });
+    const rendererProbeHtml = `<!doctype html><meta charset="utf-8"><script>
+      (() => {
+        let samples = [];
+        let previous = performance.now();
+        setInterval(() => {
+          const now = performance.now();
+          samples.push(Math.max(0, now - previous - 10));
+          previous = now;
+        }, 10);
+        window.resetBaselineProbe = () => { samples = []; previous = performance.now(); };
+        window.readBaselineProbe = () => samples.slice();
+      })();
+    </script>`;
+    await rendererWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(rendererProbeHtml)}`);
+    electronRendererStartupMs = performance.now() - rendererStartupStarted;
+
     for (const logicalWorkerCount of workers) {
+      await rendererWindow.webContents.executeJavaScript("window.resetBaselineProbe()");
       console.log(`ORC-34 benchmark preparing ${logicalWorkerCount} logical workers`);
       const eventLoopDelay = monitorEventLoopDelay({resolution: 10});
       eventLoopDelay.enable();
@@ -263,6 +294,10 @@ async function runBaselineBenchmark(): Promise<void> {
           samplingResolutionMs: 10
         };
 
+        const rendererRoundTripStarted = performance.now();
+        const rendererTimerDelays = await rendererWindow.webContents.executeJavaScript("window.readBaselineProbe()") as number[];
+        const rendererMainToRendererRoundTripMs = performance.now() - rendererRoundTripStarted;
+
         results.push({
           logicalWorkers: logicalWorkerCount,
           workload: {
@@ -280,6 +315,13 @@ async function runBaselineBenchmark(): Promise<void> {
           phaseMilliseconds: {setup: setupMs, claimBatch: claimBatchMs, messageBatch: messageBatchMs, reportAndInlineReviewBatch: reportBatchMs, total: elapsedMs},
           eventLoopDelayMilliseconds: eventLoopDelayMs,
           eventLoopTimerDriftMs,
+          electronRendererResponsiveness: {
+            samples: rendererTimerDelays.length,
+            timerDelayMilliseconds: quantiles(rendererTimerDelays),
+            mainToRendererRoundTripMs: rendererMainToRendererRoundTripMs,
+            backgroundThrottling: false,
+            isolatedRendererProcess: true
+          },
           sqlite: {
             isolatedImmediateTransactionSamples: transactionSamples.length,
             transactionLatencyMilliseconds: transactionLatency,
@@ -571,6 +613,7 @@ async function runBaselineBenchmark(): Promise<void> {
     workloadFailed = true;
     throw error;
   } finally {
+    rendererWindow?.destroy();
     try {
       rmSync(workspace, {recursive: true, force: true});
     } catch (cleanupError) {
@@ -594,6 +637,7 @@ async function runBaselineBenchmark(): Promise<void> {
       totalMemoryBytes: totalmem()
     },
     runtime: {node: process.versions.node, electron: process.versions.electron ?? null, v8: process.versions.v8},
+    electronRendererStartupMs,
     build: {mode: "compiled TypeScript source executed by Electron Node test runner", sqliteBinding: "better-sqlite3 under Electron ABI"},
     configuration: {logicalWorkerCounts: workers, progressMessagesPerWorker},
     eventLoopDelayMethod: "Node perf_hooks.monitorEventLoopDelay with 10 ms resolution plus one 10 ms timer-drift probe per scale; histogram percentiles and timer drift are descriptive single-run observations, not cross-run confidence intervals",
@@ -610,7 +654,7 @@ async function runBaselineBenchmark(): Promise<void> {
     },
     interpretation: "Synthetic in-process workload. Logical workers are SDK records, not 1/10/100/1000 external worker processes. The current SDK caps active runs at 100, so larger scales are executed in bounded claim/message/report batches rather than pretending all logical workers are concurrently active. Results are a local baseline only and do not establish production capacity or an SLA. Correctness assertions run before timing results are saved.",
     unmeasured: [
-      "Electron renderer responsiveness under backend load (no renderer interaction in this SDK-only harness).",
+      "Renderer UI frame paint/input responsiveness; this harness measures an isolated renderer's timer delay and main-to-renderer JavaScript round-trip, not pixel paints or user input.",
       "Cancellation storms and SDK-wide cancellation (one native worker process tree is measured; concurrent cancellation stress is not).",
       "Live external provider disconnect/reconnect behavior; only an injected synthetic mid-stream disconnect is measured, with no network call.",
       "Abrupt backend process termination/restart and recovery duration (this is not a process-level crash harness).",
