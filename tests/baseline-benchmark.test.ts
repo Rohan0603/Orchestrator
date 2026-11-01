@@ -69,6 +69,7 @@ async function runBaselineBenchmark(): Promise<void> {
   let providerDisconnect: Record<string, unknown> | null = null;
   let ownedProcessCancellation: Record<string, unknown> | null = null;
   let storagePressure: Record<string, unknown> | null = null;
+  let sustainedLockContention: Record<string, unknown> | null = null;
 
   let workloadFailed = false;
   try {
@@ -517,6 +518,55 @@ async function runBaselineBenchmark(): Promise<void> {
         database.close();
       }
     }
+
+    // Hold a write lock while a second connection exhausts a bounded series of
+    // busy timeouts, then verify the same writer can commit after release.
+    {
+      const databasePath = join(workspace, "sustained-lock-contention.db");
+      const database = openDatabase(databasePath);
+      const lockOwner = new Database(databasePath, {timeout: 10});
+      const contender = new Database(databasePath, {timeout: 10});
+      const conflicts: number[] = [];
+      try {
+        database.exec("CREATE TABLE baseline_contention_probe (id INTEGER PRIMARY KEY, value TEXT NOT NULL)");
+        const insert = contender.prepare("INSERT INTO baseline_contention_probe (value) VALUES (?)");
+        lockOwner.exec("BEGIN IMMEDIATE");
+        for (let attempt = 0; attempt < 10; attempt++) {
+          const conflictStarted = performance.now();
+          let errorCode: string | null = null;
+          try {
+            contender.transaction(() => insert.run(`blocked-${attempt}`)).immediate();
+          } catch (error) {
+            errorCode = typeof error === "object" && error !== null && "code" in error ? String(error.code) : null;
+          }
+          conflicts.push(performance.now() - conflictStarted);
+          assert.equal(errorCode, "SQLITE_BUSY", `contender attempt ${attempt + 1} should fail explicitly while lock is held`);
+        }
+        assert.equal((database.prepare("SELECT count(*) AS count FROM baseline_contention_probe").get() as {count: number}).count, 0,
+          "busy attempts must not partially commit rows");
+        lockOwner.exec("ROLLBACK");
+        const retryStarted = performance.now();
+        assert.equal(contender.transaction(() => insert.run("retry-after-contention")).immediate().changes, 1);
+        const retryAfterContentionMs = performance.now() - retryStarted;
+        const committedRows = (database.prepare("SELECT count(*) AS count FROM baseline_contention_probe").get() as {count: number}).count;
+        assert.equal(committedRows, 1, "only the explicit post-unlock retry should commit");
+        sustainedLockContention = {
+          scenario: "ten SQLite writer timeouts while one connection holds BEGIN IMMEDIATE",
+          busyTimeoutMs: 10,
+          contentionAttempts: conflicts.length,
+          conflictWaitMs: quantiles(conflicts),
+          retryAfterContentionMs,
+          busyErrors: conflicts.length,
+          committedRows,
+          correctness: "all contended transactions rolled back; one explicit retry committed after lock release"
+        };
+      } finally {
+        if (lockOwner.inTransaction) lockOwner.exec("ROLLBACK");
+        contender.close();
+        lockOwner.close();
+        database.close();
+      }
+    }
   } catch (error) {
     workloadFailed = true;
     throw error;
@@ -552,6 +602,7 @@ async function runBaselineBenchmark(): Promise<void> {
     providerDisconnect,
     ownedProcessCancellation,
     storagePressure,
+    sustainedLockContention,
     confidence: {
       repetitionsPerScale: 1,
       variance: "No repeat trials are included; this run does not estimate run-to-run variance.",
@@ -563,7 +614,7 @@ async function runBaselineBenchmark(): Promise<void> {
       "Cancellation storms and SDK-wide cancellation (one native worker process tree is measured; concurrent cancellation stress is not).",
       "Live external provider disconnect/reconnect behavior; only an injected synthetic mid-stream disconnect is measured, with no network call.",
       "Abrupt backend process termination/restart and recovery duration (this is not a process-level crash harness).",
-      "OS-level disk-full behavior and sustained SQLite lock contention; storage pressure is simulated with a disposable SQLite max_page_count cap.",
+      "OS-level disk-full behavior and extended SQLite lock contention beyond ten bounded conflicts; storage pressure and ten 10 ms lock timeouts use disposable database simulations.",
       "Peak queue depth and allocation counts; database initialization, SDK construction, and database close are measured, but full Electron readiness is not."
     ]
   };

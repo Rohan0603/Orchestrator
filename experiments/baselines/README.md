@@ -190,7 +190,7 @@ passed at 1/10/100 logical workers.
 
 ## Clean-close lease-expiry recovery probe — 2 November 2026
 
-Raw artifact: `ts-baseline-2026-11-01T20-36-59.440Z-25012.json` (latest combined
+Raw artifact: `ts-baseline-2026-11-01T20-40-08.012Z-31796.json` (latest combined
 run; the initial standalone probe is also preserved as
 `ts-baseline-2026-11-01T20-29-15.489Z-23140.json`). Command:
 `npm run benchmark:baseline` (exit 0; one Electron benchmark test, correctness
@@ -198,7 +198,7 @@ passed at 1/10/100 logical workers). This probe creates a one-millisecond SDK
 lease, cleanly closes SQLite, waits for expiry, reopens SQLite and constructs a
 new SDK instance, then attempts to claim work. The latest combined run measured
 database reopen at 4.16 ms, SDK construction at 0.03 ms, and expiry
-reconciliation/claim at 5.66 ms in this single host-sensitive sample. It
+reconciliation/claim at 7.06 ms in this single host-sensitive sample. It
 verified one run remained `recovery_required`, its
 recovery record remained `recovery_required`, and no replacement run was
 created. This measures clean database close/reopen recovery, not abrupt process
@@ -212,13 +212,13 @@ SDK construction explicitly.
 
 ## Synthetic provider disconnect probe — 2 November 2026
 
-Raw artifact: `ts-baseline-2026-11-01T20-36-59.440Z-25012.json` (the earlier
+Raw artifact: `ts-baseline-2026-11-01T20-40-08.012Z-31796.json` (the earlier
 standalone run `ts-baseline-2026-11-01T20-31-41.110Z-24996.json` is preserved).
 The same
 `npm run benchmark:baseline` run passed its 1/10/100 workload correctness
 checks and injected a fake fetch response that emitted partial content before
 throwing a synthetic stream disconnect. No socket or real provider was used.
-The latest combined run completed in 65.42 ms; the SDK stored the run as
+The latest combined run completed in 66.45 ms; the SDK stored the run as
 `rejected`, emitted `started`, `delta`, `completed`, and created no acceptance
 decision. This covers local adapter handling of a transport interruption, not
 live provider disconnect/reconnect behavior or provider-side cancellation.
@@ -227,12 +227,12 @@ are single-run descriptive timings only.
 
 ## Native owned-process cancellation probe — 2 November 2026
 
-Raw artifact: `ts-baseline-2026-11-01T20-36-59.440Z-25012.json` (standalone
+Raw artifact: `ts-baseline-2026-11-01T20-40-08.012Z-31796.json` (standalone
 run `ts-baseline-2026-11-01T20-33-35.524Z-16700.json` is also preserved). Command:
 `npm run benchmark:baseline` (exit 0). On Windows, the harness launches the
 existing native ownership helper's worker/child/grandchild fixture, waits until
 all three processes have created their start markers, then times verified Job
-Object cleanup. The latest combined run measured 1.87 ms and verified zero
+Object cleanup. The latest combined run measured 1.16 ms and verified zero
 active processes after cancellation. This is one host-local sample for one process tree; it is
 not an SDK-wide cancellation command, repeated distribution, or concurrent
 cancellation storm. The v0.1 one-active-worker constraint remains in force.
@@ -243,14 +243,24 @@ The latest combined artifact above also caps a disposable database at eight
 pages above its schema size, writes 16 KiB blobs transactionally, and asserts
 that SQLite returns `SQLITE_FULL` without damaging database integrity. This
 run committed two rows (32 KiB of payload), reached the 109-page cap from 101
-pages, and completed the pressure loop in 10.22 ms; `integrity_check` returned
+pages, and completed the pressure loop in 9.86 ms; `integrity_check` returned
 `ok`. The database is temporary and isolated. This is SQLite page-limit
 simulation, not OS-level disk exhaustion. Repeated sustained lock contention
 and real disk-full behavior remain unmeasured.
 
+## Bounded sustained SQLite lock probe — 2 November 2026
+
+The latest combined artifact also holds `BEGIN IMMEDIATE` on one connection
+while a second connection makes ten writes with a 10 ms busy timeout. All ten
+returned `SQLITE_BUSY`; p50/p95 wait was 66.57/74.60 ms on this Windows host.
+After releasing the lock, one explicit retry committed, and the database
+contained exactly one row. This is a single bounded contention run; Windows
+scheduling makes measured waits longer than the configured timeout. It does
+not model an extended or production multi-writer workload.
+
 ORC-34 remains In Progress. Open measurements: renderer responsiveness under
 backend load; full Electron startup/readiness; abrupt worker/backend process
 crash and restart; live provider disconnect/reconnect and remote cancellation;
-concurrent cancellation stress; sustained SQLite contention; OS-level disk
+concurrent cancellation stress; extended SQLite lock contention; OS-level disk
 pressure; peak queue depth and allocation counts; and repeated recovery and
 cancellation distributions.
