@@ -91,13 +91,16 @@ export class PolicyRepository {
     }
   }
 
-  public consumeApproval(id: string, action: PolicyAction, policyVersion: string): Approval {
+  public consumeApproval(id: string, action: PolicyAction, policyVersion: string, expectedRunId?: string): Approval {
     const consume = this.database.transaction(() => {
       const row = this.database
         .prepare("SELECT * FROM approvals WHERE id = ?")
         .get(id) as ApprovalRow | undefined;
       if (!row) throw new Error("Approval not found");
       const approval = approvalFromRow(row);
+      if (expectedRunId !== undefined && approval.runId !== expectedRunId) {
+        throw new Error("APPROVAL_RUN_MISMATCH");
+      }
       const check = checkApproval(approval, action, policyVersion);
       if (!check.valid) {
         throw new Error(check.reason);
@@ -118,7 +121,7 @@ export class PolicyRepository {
       return consume();
     } catch (error) {
       if (error instanceof PersistenceError) throw error;
-      throw new PersistenceError("Approval consumption failed", { cause: error });
+      throw new PersistenceError(`Approval consumption failed${error instanceof Error ? `: ${error.message}` : ""}`, { cause: error });
     }
   }
 

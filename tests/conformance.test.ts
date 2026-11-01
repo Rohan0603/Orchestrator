@@ -243,8 +243,14 @@ test("OpenAI-compatible adapter reports streamed progress and terminal outcome",
   });
   assert.equal(readOpenAICompatibleConfig({
     ORCHESTRATOR_OPENAI_BASE_URL: "http://127.0.0.1:31415/v1",
-    ORCHESTRATOR_OPENAI_API_KEY: "secret",
+    FREELLMAPI_API_KEY: "secret",
     ORCHESTRATOR_OPENAI_MODEL: "auto"
   })?.apiKey, "secret");
+  assert.equal(readOpenAICompatibleConfig({
+    ORCHESTRATOR_OPENAI_BASE_URL: "http://127.0.0.1:31415/v1",
+    FREELLMAPI_API_KEY: "secret",
+    ORCHESTRATOR_OPENAI_MODEL: "auto",
+    ORCHESTRATOR_OPENAI_PROVIDER: "another-provider"
+  }), null);
   await adapter.close();
 });

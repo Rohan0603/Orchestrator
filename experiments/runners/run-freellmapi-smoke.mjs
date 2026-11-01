@@ -22,7 +22,7 @@ if (!output || !sourceRevision) {
 const config = readOpenAICompatibleConfig();
 if (!config) {
   throw new Error(
-    "Set ORCHESTRATOR_OPENAI_BASE_URL, ORCHESTRATOR_OPENAI_API_KEY, and optionally ORCHESTRATOR_OPENAI_MODEL before running the smoke trial"
+    "Set ORCHESTRATOR_OPENAI_BASE_URL, FREELLMAPI_API_KEY, and optionally ORCHESTRATOR_OPENAI_MODEL before running the smoke trial"
   );
 }
 

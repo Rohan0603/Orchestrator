@@ -221,6 +221,8 @@ export interface CreateRunRequest {
   readonly idempotencyKey: string;
   readonly authorization: AdapterAuthorization;
   readonly taskDescription: string;
+  readonly systemPrompt?: string;
+  readonly maxTokens?: number | null;
   readonly deadlineAt: string;
   readonly route: RouteIdentity;
   readonly workingDirectory?: string;

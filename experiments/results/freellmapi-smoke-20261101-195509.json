@@ -1,0 +1,54 @@
+{
+  "schemaVersion": "trial-result-v1",
+  "experimentId": "freellmapi-openai-compatible-smoke",
+  "trialId": "freellmapi-1793543112813",
+  "sourceRevision": "5dbf4a6691a28c85032c7e5f2a739b696b392953",
+  "adapter": {
+    "adapterId": "openai-compatible-chat-completions",
+    "version": "1",
+    "protocol": "OpenAI-compatible chat completions over SSE",
+    "route": {
+      "routeId": "openai-compatible:freellmapi:auto:http://127.0.0.1:31415/v1",
+      "provider": {
+        "state": "known",
+        "name": "freellmapi"
+      },
+      "model": {
+        "state": "known",
+        "name": "auto"
+      },
+      "reportedBy": "adapter"
+    }
+  },
+  "invocation": {
+    "endpoint": "http://127.0.0.1:31415/v1/chat/completions",
+    "model": "auto",
+    "secretsRedacted": true,
+    "promptRedacted": true
+  },
+  "worker": {
+    "terminal": {
+      "kind": "succeeded",
+      "correlation": {
+        "dispatchId": "freellmapi-1793543109221",
+        "runId": "freellmapi-1793543109221",
+        "attemptId": "freellmapi-1793543109221"
+      },
+      "reportedAt": "2026-11-01T14:25:12.305Z",
+      "evidence": [],
+      "error": null
+    },
+    "progressEvents": 1,
+    "usage": {
+      "total": 44,
+      "input": 20,
+      "output": 24,
+      "reasoning": null,
+      "cost": null
+    }
+  },
+  "validity": {
+    "valid": true,
+    "reason": "Smoke trial validates HTTP/SSE execution only; it does not qualify cancellation, artifacts, or restart reconciliation"
+  }
+}

@@ -91,7 +91,7 @@ export async function executeLocalRun(
       runs.transition(created.run.id, "blocked", "none");
       return result(created.run, created.attempt.id, policy, "blocked", 0, 0);
     }
-    policies.consumeApproval(input.approval.id, input.action, policy.policyVersion);
+    policies.consumeApproval(input.approval.id, input.action, policy.policyVersion, created.run.id);
   }
 
   const correlation: Correlation = {

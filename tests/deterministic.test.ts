@@ -19,6 +19,7 @@ import {
 import { isAcceptableEvidence, type EvidenceRecord } from "../src/evidence/evidence";
 import { acceptanceCriterionIds, evidenceCoversCriteria } from "../src/evidence/criteria";
 import { evaluateAcceptance } from "../src/acceptance/acceptance";
+import { AGENT_MESSAGE_SCHEMA_VERSION, validateAgentMessage } from "../src/shared/agent-message";
 
 const context = {
   operation: "run-worker",

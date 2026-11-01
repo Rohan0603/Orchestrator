@@ -22,7 +22,7 @@ running freellmapi endpoint and keeps the API key out of the trial record:
 ```text
 npm run build
 set ORCHESTRATOR_OPENAI_BASE_URL=http://127.0.0.1:31415/v1
-set ORCHESTRATOR_OPENAI_API_KEY=<secret>
+set FREELLMAPI_API_KEY=<secret>
 set ORCHESTRATOR_OPENAI_MODEL=auto
 node experiments/runners/run-freellmapi-smoke.mjs --output <new-json> --source-revision <commit>
 ```

@@ -58,7 +58,9 @@ export function appendDurableEvent(
     }
   }
   const previous = database
-    .prepare("SELECT event_hash FROM audit_events ORDER BY created_at DESC, id DESC LIMIT 1")
+    // The chain follows durable append order, even when clocks move backwards or
+    // multiple events share a timestamp. UUID lexical order is not append order.
+    .prepare("SELECT event_hash FROM audit_events ORDER BY rowid DESC LIMIT 1")
     .get() as { event_hash: string } | undefined;
   const serialized = JSON.stringify(payload);
   const correlation = options.correlation ?? {};
@@ -127,6 +129,7 @@ export class EventRepository {
         `SELECT id, event_type, payload, published_at, attempt_count, next_attempt_at, created_at
          FROM outbox
          WHERE published_at IS NULL
+           AND event_type <> 'internal.message'
            AND next_attempt_at <= ?
          ORDER BY created_at, id
          LIMIT ?`
@@ -164,6 +167,8 @@ export class EventRepository {
   }
 
   public markPublished(eventId: string, publishedAt = new Date().toISOString()): void {
+    const row = this.database.prepare("SELECT event_type FROM outbox WHERE id = ?").get(eventId) as { event_type: string } | undefined;
+    if (row?.event_type === "internal.message") throw new Error("Semantic messages require consumer acknowledgement");
     const result = this.database
       .prepare("UPDATE outbox SET published_at = ? WHERE id = ? AND published_at IS NULL")
       .run(publishedAt, eventId);

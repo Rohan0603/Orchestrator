@@ -22,3 +22,7 @@ test("runner accepts matching clean child exit", () => {
     true
   );
 });
+
+test("runner rejects failure markers even when Electron exits zero", () => {
+  assert.equal(evaluateRun({ exitCode: 0, resultCount: 1, failureCount: 1, expected: 1 }), false);
+});

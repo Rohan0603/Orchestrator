@@ -79,10 +79,10 @@ function scalar<T extends Record<string, unknown>>(
 test("real SQLite creates schema, enables foreign keys, and reruns migrations", () => {
   withDatabase((database) => {
     assert.equal(database.pragma("foreign_keys", { simple: true }), 1);
-    assert.equal(scalar<{ version: number }>(database, "SELECT version FROM schema_version").version, 10);
+    assert.equal(scalar<{ version: number }>(database, "SELECT version FROM schema_version").version, 13);
     assert.doesNotThrow(() => applyMigrations(database));
-    assert.equal(scalar<{ version: number }>(database, "SELECT version FROM schema_version").version, 10);
-    for (const table of ["tasks", "approvals", "policy_decisions", "dispatch_intents", "evidence_records"]) {
+    assert.equal(scalar<{ version: number }>(database, "SELECT version FROM schema_version").version, 13);
+    for (const table of ["tasks", "task_revisions", "task_dependencies", "task_commands", "approvals", "policy_decisions", "dispatch_intents", "evidence_records"]) {
       assert.ok(
         database.prepare(
           "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?"
@@ -268,7 +268,7 @@ test("SQLite backup restores schema and durable task state", async () => {
     const restored = openDatabase(backupPath);
     try {
       assert.equal(new TaskRepository(restored).list()[0].id, task.id);
-      assert.equal(scalar<{ version: number }>(restored, "SELECT version FROM schema_version").version, 10);
+      assert.equal(scalar<{ version: number }>(restored, "SELECT version FROM schema_version").version, 13);
       assert.equal(restored.pragma("foreign_keys", { simple: true }), 1);
     } finally {
       restored.close();
@@ -277,6 +277,58 @@ test("SQLite backup restores schema and durable task state", async () => {
     source.close();
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test("task revisions, dependency edges, and idempotent create commands persist atomically", () => {
+  withDatabase((database) => {
+    const tasks = new TaskRepository(database);
+    const input = {title: "Idempotent task", description: "Persist authored content", acceptanceCriteria: ["revision"], riskTier: 1 as const, idempotencyKey: "client-task-1"};
+    const task = tasks.create(input);
+    const duplicate = tasks.create(input);
+    assert.equal(duplicate.id, task.id);
+    const revisions = tasks.revisions(task.id);
+    assert.equal(revisions.length, 1);
+    assert.equal(revisions[0]?.revision, 1);
+    assert.match(revisions[0]?.contentHash ?? "", /^[a-f0-9]{64}$/);
+    assert.throws(() => database.prepare("UPDATE task_revisions SET content_hash='tampered' WHERE id=?").run(revisions[0]?.id), /immutable/);
+    assert.deepEqual(JSON.parse(revisions[0]?.snapshotJson ?? "{}"), {
+      taskId: task.id,
+      projectId: null,
+      parentTaskId: null,
+      title: input.title,
+      description: input.description,
+      acceptanceCriteria: input.acceptanceCriteria,
+      riskTier: 1,
+      skillIds: [],
+      mcpServerIds: [],
+      pluginIds: [],
+      tokenBudget: null
+    });
+    assert.equal(scalar<{count: number}>(database, "SELECT count(*) AS count FROM audit_events WHERE event_type='task.created'").count, 1);
+    assert.throws(() => tasks.create({...input, title: "Changed command payload"}), /idempotency/i);
+
+    const prerequisite = tasks.create({title: "Prerequisite", description: "", acceptanceCriteria: ["done"], riskTier: 1});
+    tasks.addDependency(task.id, prerequisite.id);
+    tasks.addDependency(task.id, prerequisite.id);
+    assert.equal(tasks.dependencies(task.id).length, 1);
+    assert.throws(() => tasks.addDependency(prerequisite.id, task.id), /cycle/i);
+    assert.equal(scalar<{count: number}>(database, "SELECT count(*) AS count FROM audit_events WHERE event_type='task.dependency.added'").count, 1);
+  });
+});
+
+test("schema-12 task rows receive an immutable revision when upgraded", () => {
+  withDatabase((database) => {
+    const task = new TaskRepository(database).create({title: "Legacy task", description: "Upgrade", acceptanceCriteria: ["backfilled"], riskTier: 2});
+    database.exec("DROP TABLE task_commands; DROP TABLE task_dependencies; DROP TABLE task_revisions;");
+    database.prepare("UPDATE schema_version SET version=12").run();
+    applyMigrations(database);
+    const revisions = new TaskRepository(database).revisions(task.id);
+    assert.equal(revisions.length, 1);
+    assert.equal(revisions[0]?.revision, 1);
+    assert.match(revisions[0]?.contentHash ?? "", /^[a-f0-9]{64}$/);
+    assert.equal(JSON.parse(revisions[0]?.snapshotJson ?? "{}").title, task.title);
+    assert.equal(scalar<{version: number}>(database, "SELECT version FROM schema_version").version, 13);
+  });
 });
 
 test("repositories persist task, approval, dispatch, progress, and evidence state", () => {

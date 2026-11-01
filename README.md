@@ -75,7 +75,7 @@ cancellation, recovery, verification, review, and acceptance.
 evidence. Deterministic fixture checks cover contract behavior. The current
 provider integration is the generic OpenAI-compatible adapter in
 `src/harness/openai-compatible-adapter.ts`; it is configured through
-`ORCHESTRATOR_OPENAI_BASE_URL`, `ORCHESTRATOR_OPENAI_API_KEY`, and
+`ORCHESTRATOR_OPENAI_BASE_URL`, `FREELLMAPI_API_KEY`, and
 `ORCHESTRATOR_OPENAI_MODEL`. Provider credentials are never written to
 repository evidence. freellmapi is the only configured provider route.
 
@@ -114,6 +114,27 @@ duplicates and out-of-order events are non-success dispositions. Failed,
 cancelled, timed-out, disconnected, or inconclusive worker outcomes do not
 become acceptance. Disconnected or ambiguous outcomes remain recovery-required
 and cannot trigger automatic redispatch.
+
+## SDK backend mode
+
+The backend can be used without the renderer through `src/sdk`. The SDK defines
+projects, tasks, runs, attempts, worker leases, versioned handoffs, ordered
+worker messages, reports, skills, MCP server profiles, plugins, audit events,
+and run streams. Worker calls require the lease token and monotonically
+increasing message sequence; duplicate messages with the same idempotency key
+are safe to retry.
+
+The orchestrator is the only LLM client. `OrchestratorSdk.streamTask()` uses
+the direct OpenAI-compatible freellmapi adapter, streams SSE deltas, records
+usage and audit events, and never treats model output as acceptance. Workers
+receive selected skill instructions and MCP descriptors in the handoff and
+report execution/evidence back through the SDK; they do not connect to an LLM.
+Only selected skills are included in prompts to keep token use bounded.
+
+LangChain/LangGraph are not runtime dependencies: the direct adapter plus the
+SQLite event/outbox, lease, recovery, policy, and evidence contracts provide
+the required reliability with fewer layers. MCP is a capability integration
+boundary, not another LLM route.
 
 ## Setup
 
@@ -182,10 +203,14 @@ and environment variables documented in
 
 For the current generic freellmapi/OpenAI-compatible route, first run
 `npx freellmapi setup-generic --url http://127.0.0.1:31415` in the freellmapi
-project, then configure the `ORCHESTRATOR_OPENAI_*` variables and run
-`experiments/runners/run-freellmapi-smoke.mjs`. The smoke runner is deliberately
-experiment-only until remote cancellation, restart reconciliation, and
-artifact provenance are qualified.
+project, then configure the endpoint and model variables and run
+`experiments/runners/run-freellmapi-smoke.mjs`. On Windows, run
+`.\scripts\setup-freellmapi.ps1` from the repository root to enter the unified
+key securely, validate the gateway, preview generic client setup, build, and
+write a new redacted smoke-trial record in one step. The key remains in the
+current PowerShell process so `npm start` can reuse it without writing the
+credential to a file. The smoke runner remains experiment-only until remote
+cancellation, restart reconciliation, and artifact provenance are qualified.
 
 ## Research artifacts
 

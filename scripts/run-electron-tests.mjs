@@ -2,8 +2,8 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export function evaluateRun({ exitCode, resultCount, expected, timedOut = false }) {
-  return !timedOut && exitCode === 0 && resultCount === expected;
+export function evaluateRun({ exitCode, resultCount, expected, timedOut = false, failureCount = 0 }) {
+  return !timedOut && exitCode === 0 && failureCount === 0 && resultCount === expected;
 }
 
 export async function runElectronTests({
@@ -71,7 +71,9 @@ export async function runElectronTests({
       }, killWaitMs);
     }, timeoutMs);
   });
-  return { ...result, passed: evaluateRun({ ...result, expected }) };
+  // Electron's preload quits the app after tests, which can mask Node's exit code.
+  const failureCount = result.output.split(/\r?\n/).filter((line) => /^\s*✖\s/.test(line)).length;
+  return { ...result, failureCount, passed: evaluateRun({ ...result, failureCount, expected }) };
 }
 
 const timeoutArgument = process.argv.find((argument) => argument.startsWith("--timeout="));

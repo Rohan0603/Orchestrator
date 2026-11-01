@@ -2,10 +2,17 @@ import type { AcceptanceRecord, Run, Attempt, Task } from "./domain";
 import type { GitHubSyncResult } from "../integrations/github";
 
 export interface CreateTaskInput {
+  readonly projectId?: string | null;
+  readonly parentTaskId?: string | null;
   readonly title: string;
   readonly description: string;
   readonly acceptanceCriteria: readonly string[];
   readonly riskTier: 1 | 2 | 3;
+  readonly skillIds?: readonly string[];
+  readonly mcpServerIds?: readonly string[];
+  readonly pluginIds?: readonly string[];
+  readonly tokenBudget?: number | null;
+  readonly idempotencyKey?: string;
 }
 
 export interface ApplicationStatus {
@@ -80,6 +87,7 @@ export function parseCreateTaskInput(value: unknown): CreateTaskInput {
     throw new Error("Task payload must be an object");
   }
   const { title, description, acceptanceCriteria, riskTier } = value;
+  const idempotencyKey = value.idempotencyKey;
   if (
     typeof title !== "string" ||
     title.trim().length === 0 ||
@@ -91,14 +99,32 @@ export function parseCreateTaskInput(value: unknown): CreateTaskInput {
     acceptanceCriteria.some(
       (criterion) => typeof criterion !== "string" || criterion.trim().length === 0
     ) ||
-    (riskTier !== 1 && riskTier !== 2 && riskTier !== 3)
+    (riskTier !== 1 && riskTier !== 2 && riskTier !== 3) ||
+    (idempotencyKey !== undefined && (typeof idempotencyKey !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/.test(idempotencyKey)))
   ) {
     throw new Error("Invalid task payload");
   }
   return {
+    projectId: typeof value.projectId === "string" ? value.projectId.trim() : null,
+    parentTaskId: typeof value.parentTaskId === "string" ? value.parentTaskId.trim() : null,
     title: title.trim(),
     description,
     acceptanceCriteria: acceptanceCriteria.map((criterion) => criterion.trim()),
-    riskTier
+    riskTier,
+    skillIds: Array.isArray(value.skillIds) && value.skillIds.every((id) => typeof id === "string")
+      ? value.skillIds.map((id) => id.trim()).filter(Boolean)
+      : [],
+    mcpServerIds: Array.isArray(value.mcpServerIds) && value.mcpServerIds.every((id) => typeof id === "string")
+      ? value.mcpServerIds.map((id) => id.trim()).filter(Boolean)
+      : [],
+    pluginIds: Array.isArray(value.pluginIds) && value.pluginIds.every((id) => typeof id === "string")
+      ? value.pluginIds.map((id) => id.trim()).filter(Boolean)
+      : [],
+    tokenBudget: value.tokenBudget === null || value.tokenBudget === undefined
+      ? null
+      : typeof value.tokenBudget === "number" && Number.isInteger(value.tokenBudget) && value.tokenBudget > 0
+        ? value.tokenBudget
+        : null,
+    idempotencyKey: typeof idempotencyKey === "string" ? idempotencyKey : undefined
   };
 }

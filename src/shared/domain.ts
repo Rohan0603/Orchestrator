@@ -30,11 +30,18 @@ export interface AcceptanceRecord {
 
 export interface Task {
   readonly id: string;
+  readonly projectId: string | null;
+  readonly parentTaskId: string | null;
   readonly title: string;
   readonly description: string;
   readonly acceptanceCriteria: readonly string[];
   readonly riskTier: 1 | 2 | 3;
   readonly status: TaskStatus;
+  readonly assignedWorkerId: string | null;
+  readonly skillIds: readonly string[];
+  readonly mcpServerIds: readonly string[];
+  readonly pluginIds: readonly string[];
+  readonly tokenBudget: number | null;
   readonly createdAt: string;
 }
 
@@ -84,6 +91,9 @@ export interface AuditEvent {
 }
 
 export interface EventCorrelation {
+  readonly correlationId?: string;
+  readonly causationId?: string;
+  readonly messageId?: string;
   readonly taskId?: string;
   readonly runId?: string;
   readonly attemptId?: string;

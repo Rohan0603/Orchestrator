@@ -50,6 +50,13 @@ export interface OpenAICompatibleAdapterOptions {
   readonly fetchImpl?: typeof fetch;
 }
 
+export type OpenAITraceEvent =
+  | { readonly kind: "request_started"; readonly correlation: Correlation; readonly occurredAt: string; readonly route: RouteIdentity }
+  | { readonly kind: "response_started"; readonly correlation: Correlation; readonly occurredAt: string; readonly status: number; readonly routedVia: string | null }
+  | { readonly kind: "content_delta"; readonly correlation: Correlation; readonly occurredAt: string; readonly text: string; readonly sequence: number }
+  | { readonly kind: "usage"; readonly correlation: Correlation; readonly occurredAt: string; readonly usage: OpenAIUsage }
+  | { readonly kind: "terminal"; readonly correlation: Correlation; readonly occurredAt: string; readonly outcome: TerminalOutcome };
+
 interface ProcessState {
   readonly request: CreateRunRequest;
   readonly controller: AbortController;
@@ -146,13 +153,15 @@ export function readOpenAICompatibleConfig(
   environment: Readonly<Record<string, string | undefined>> = process.env
 ): Pick<OpenAICompatibleAdapterOptions, "baseUrl" | "apiKey" | "model" | "providerName"> | null {
   const baseUrl = environment.ORCHESTRATOR_OPENAI_BASE_URL?.trim();
-  const apiKey = environment.ORCHESTRATOR_OPENAI_API_KEY?.trim();
+  const apiKey = environment.FREELLMAPI_API_KEY?.trim();
   if (!baseUrl || !apiKey) return null;
+  const providerName = environment.ORCHESTRATOR_OPENAI_PROVIDER?.trim() || "freellmapi";
+  if (providerName.toLowerCase() !== "freellmapi") return null;
   return {
     baseUrl,
     apiKey,
     model: environment.ORCHESTRATOR_OPENAI_MODEL?.trim() || "auto",
-    providerName: environment.ORCHESTRATOR_OPENAI_PROVIDER?.trim() || "freellmapi"
+    providerName: "freellmapi"
   };
 }
 
@@ -164,12 +173,16 @@ export class OpenAICompatibleAdapter implements HarnessAdapter {
     Pick<OpenAICompatibleAdapterOptions, "fetchImpl">;
   private readonly runs = new Map<string, ProcessState>();
   private readonly completedUsage = new Map<string, OpenAIUsage>();
+  private readonly traceHandlers = new Map<string, Array<(event: OpenAITraceEvent) => void>>();
 
   public constructor(options: OpenAICompatibleAdapterOptions) {
     const baseUrl = normalizeBaseUrl(options.baseUrl);
     if (!options.apiKey.trim()) throw new Error("OpenAI-compatible API key is required");
     if (!options.model.trim()) throw new Error("OpenAI-compatible model is required");
-    const providerName = options.providerName?.trim() || "openai-compatible";
+    const providerName = options.providerName?.trim() || "freellmapi";
+    if (providerName.toLowerCase() !== "freellmapi") {
+      throw new Error("Only the freellmapi provider route is supported");
+    }
     this.options = {
       baseUrl,
       apiKey: options.apiKey.trim(),
@@ -320,6 +333,19 @@ export class OpenAICompatibleAdapter implements HarnessAdapter {
     };
   }
 
+  public subscribeTrace(correlation: Correlation, handler: (event: OpenAITraceEvent) => void): () => void {
+    const runKey = key(correlation);
+    const handlers = this.traceHandlers.get(runKey) ?? [];
+    handlers.push(handler);
+    this.traceHandlers.set(runKey, handlers);
+    return () => {
+      const current = this.traceHandlers.get(runKey) ?? [];
+      const index = current.indexOf(handler);
+      if (index >= 0) current.splice(index, 1);
+      if (current.length === 0) this.traceHandlers.delete(runKey);
+    };
+  }
+
   public async requestCancellation(correlation: Correlation, _deadlineAt: string): Promise<AdapterResult<CancellationReport>> {
     const state = this.runs.get(key(correlation));
     if (!state) {
@@ -384,6 +410,12 @@ export class OpenAICompatibleAdapter implements HarnessAdapter {
     const fetchImpl = this.options.fetchImpl ?? globalThis.fetch;
     try {
       if (!fetchImpl) throw new Error("Fetch is unavailable in this runtime");
+      this.emitTrace(state, {
+        kind: "request_started",
+        correlation,
+        occurredAt: new Date().toISOString(),
+        route: this.route
+      });
       const response = await fetchImpl(`${this.options.baseUrl}/chat/completions`, {
         method: "POST",
         headers: {
@@ -393,13 +425,26 @@ export class OpenAICompatibleAdapter implements HarnessAdapter {
         },
         body: JSON.stringify({
           model: this.options.model,
-          messages: [{ role: "user", content: state.request.taskDescription }],
+          messages: [
+            ...(state.request.systemPrompt ? [{ role: "system", content: state.request.systemPrompt }] : []),
+            { role: "user", content: state.request.taskDescription }
+          ],
+          ...(state.request.maxTokens === null || state.request.maxTokens === undefined
+            ? {}
+            : { max_tokens: state.request.maxTokens }),
           stream: true,
           stream_options: { include_usage: true }
         }),
         signal: state.controller.signal
       });
       state.routedVia = response.headers.get("x-routed-via");
+      this.emitTrace(state, {
+        kind: "response_started",
+        correlation,
+        occurredAt: new Date().toISOString(),
+        status: response.status,
+        routedVia: state.routedVia
+      });
       if (!response.ok) {
         const body = truncate(await response.text(), MAX_ERROR_BODY);
         this.finish(state, correlation, {
@@ -454,8 +499,21 @@ export class OpenAICompatibleAdapter implements HarnessAdapter {
             return;
           }
           state.usage = mergeOpenAIUsage(state.usage, parsed);
+          if (state.usage) this.emitTrace(state, {
+            kind: "usage",
+            correlation,
+            occurredAt: new Date().toISOString(),
+            usage: state.usage
+          });
           const content = parsed.choices?.[0]?.delta?.content;
           if (content) this.emitProgress(state, correlation, "message", truncate(content, MAX_PROGRESS_MESSAGE));
+          if (content) this.emitTrace(state, {
+            kind: "content_delta",
+            correlation,
+            occurredAt: new Date().toISOString(),
+            text: truncate(content, MAX_PROGRESS_MESSAGE),
+            sequence: state.sequence
+          });
         }
         if (chunk.done) break;
       }
@@ -463,8 +521,21 @@ export class OpenAICompatibleAdapter implements HarnessAdapter {
         const parsed = parseOpenAIStreamLine(buffer);
         if (parsed && parsed !== "done") {
           state.usage = mergeOpenAIUsage(state.usage, parsed);
+          if (state.usage) this.emitTrace(state, {
+            kind: "usage",
+            correlation,
+            occurredAt: new Date().toISOString(),
+            usage: state.usage
+          });
           const content = parsed.choices?.[0]?.delta?.content;
           if (content) this.emitProgress(state, correlation, "message", truncate(content, MAX_PROGRESS_MESSAGE));
+          if (content) this.emitTrace(state, {
+            kind: "content_delta",
+            correlation,
+            occurredAt: new Date().toISOString(),
+            text: truncate(content, MAX_PROGRESS_MESSAGE),
+            sequence: state.sequence
+          });
         } else if (buffer.trim()) {
           state.malformedEvents += 1;
         }
@@ -534,12 +605,23 @@ export class OpenAICompatibleAdapter implements HarnessAdapter {
     for (const handler of state.progressHandlers) handler(progress);
   }
 
+  private emitTrace(state: ProcessState, event: OpenAITraceEvent): void {
+    for (const handler of this.traceHandlers.get(key(event.correlation)) ?? []) handler(event);
+  }
+
   private finish(state: ProcessState, correlation: Correlation, outcome: TerminalOutcome): void {
     if (state.terminal) return;
     state.terminal = outcome;
+    this.emitTrace(state, {
+      kind: "terminal",
+      correlation,
+      occurredAt: new Date().toISOString(),
+      outcome
+    });
     for (const handler of state.terminalHandlers) handler(outcome);
     const runKey = key(correlation);
     if (state.usage) this.completedUsage.set(runKey, state.usage);
     if (this.runs.get(runKey) === state) this.runs.delete(runKey);
+    this.traceHandlers.delete(runKey);
   }
 }

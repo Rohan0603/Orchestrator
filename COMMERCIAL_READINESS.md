@@ -1310,3 +1310,14 @@ Commercial release remains blocked by independent review, provider session-level
 restart reconciliation, protocol comparison, clean-machine installation,
 signing/Application Control qualification, production outbox publication, and
 release authorization.
+
+## Internal communication scope — 2026-11-01
+
+Schema-12 internal semantic delivery and the successful SDK report-to-review-
+intake slice are implemented. See `docs/VALIDATION_EVIDENCE.md` for the unit,
+Electron SQLite integration, and injected-failure evidence classifications.
+Database close/reopen and rollback simulations do not qualify real OS crashes
+or external side effects. Review intake does not execute an independent
+reviewer or grant task acceptance. This work does not upgrade any commercial
+release gate; live adapter, cancellation, independent-review execution, and
+clean-machine release requirements retain their existing status.
