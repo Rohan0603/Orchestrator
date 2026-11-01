@@ -1,6 +1,6 @@
 # Validation evidence
 
-Audit date: 2026-10-26.
+Audit date: 2026-11-02.
 
 ## Current implementation
 
@@ -90,18 +90,33 @@ on a 1 ms wall-clock race. The test runner now checks failure markers because
 the existing Electron preload's `app.quit()` can mask the test exit code.
 Neither change relaxes acceptance criteria.
 
-Final working-tree validation on 2026-11-01:
+Final working-tree validation on 2026-11-02:
 
 - `npm run build`: PASS.
-- `npm test`: PASS, 98 Electron test cases plus 4 Node-based runner tests
-  (102 passing markers, zero failure markers). Native helper build and test
+- `npm test`: PASS, 111 Electron test cases plus 4 Node-based runner tests
+  (115 passing markers, zero failure markers). Native helper build and test
   compilation completed through the canonical script.
 - `git diff --check`: PASS with repository-default line-ending handling.
 - Fresh scoped code review: three durability findings corrected with
   regressions; reviewer recheck found no remaining important issues.
 
-Focused suites comprise 15 SQLite runtime tests, 3 protocol tests, 20 delivery
-tests, and 17 SDK tests. Fault injection means SQLite trigger/exception simulation;
+Focused suites comprise 16 SQLite runtime tests, 3 agent-message tests, 9 Core
+IPC protocol v1 tests, 20 delivery tests, 19 SDK tests and 1 CLI acceptance test. The SDK run timeline merges persisted audit events,
+adapter progress events, and worker messages by event time while preserving each
+source payload and its correlation. Fault injection means SQLite trigger/exception simulation;
 close/reopen means graceful database reopen, not an abrupt OS crash.
+
+The documented headless CLI smoke command passed with exit code 0:
+
+```text
+npm run cli -- --db C:\Users\ponna\AppData\Local\Temp\orchestrator-sdk-demo-20261101-4.sqlite fixture demo
+```
+
+It created labelled project/task/run records, one fixture artifact and a 13-entry
+SQLite timeline. The report retains `adapterId=orchestrator-cli-fixture` and its
+run session ID. Captured output: `C:\Users\ponna\AppData\Local\Temp\orchestrator-sdk-demo-20261101-4.out`.
+The fixture remained at verification and did not claim acceptance. Validation
+was run against working tree HEAD `4982678cd2f16d3ce6355ebdaf5eb6801ffe5e23`
+plus uncommitted changes; it is not committed-release evidence.
 No raw experiment records, provider credentials, release gates, or live adapter
 qualification are changed by these SQLite checks.

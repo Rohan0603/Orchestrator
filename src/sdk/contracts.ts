@@ -1,6 +1,7 @@
 import type { AuditEvent, Attempt, Run, Task } from "../shared/domain";
 import type { OpenAICompatibleAdapter } from "../harness/openai-compatible-adapter";
 import type { CreateTaskInput } from "../shared/ipc";
+import type { ProgressEvent } from "../harness/adapter-contract";
 
 export interface Project {
   readonly id: string;
@@ -39,6 +40,15 @@ export interface TaskDependencyInfo {
   readonly taskId: string;
   readonly dependsOnTaskId: string;
   readonly createdAt: string;
+}
+
+export type UpdateTaskContentInput = Partial<Pick<CreateTaskInput,
+  "projectId" | "parentTaskId" | "title" | "description" | "acceptanceCriteria" | "riskTier" |
+  "skillIds" | "mcpServerIds" | "pluginIds" | "tokenBudget">>;
+
+export interface TaskRunHistoryInfo {
+  readonly run: Run;
+  readonly attempt: Attempt;
 }
 
 export interface WorkerCapability {
@@ -193,6 +203,10 @@ export interface WorkerReportInput {
   readonly sequence: number;
   readonly outcome: "succeeded" | "failed" | "cancelled" | "inconclusive";
   readonly summary: string;
+  readonly source: {
+    readonly adapterId: string;
+    readonly sessionId: string;
+  };
   readonly evidence?: readonly {
     readonly kind: "diff" | "artifact" | "check" | "review" | "log";
     readonly uri?: string | null;
@@ -233,7 +247,7 @@ export interface RunUsage {
 export type RunStreamEvent =
   | { readonly kind: "audit"; readonly event: AuditEvent }
   | { readonly kind: "worker_message"; readonly message: WorkerMessage }
-  | { readonly kind: "progress"; readonly event: unknown };
+  | { readonly kind: "progress"; readonly event: ProgressEvent };
 
 export type LlmTaskStreamEvent =
   | { readonly kind: "started"; readonly run: Run; readonly attempt: Attempt }
@@ -243,7 +257,14 @@ export type LlmTaskStreamEvent =
 
 export interface OrchestratorSdk {
   createProject(input: CreateProjectInput): Project;
+  getProject(projectId: string): Project | null;
+  listProjects(): readonly Project[];
   createTask(input: CreateTaskInput): Task;
+  updateTask(taskId: string, input: UpdateTaskContentInput): Task;
+  getTask(taskId: string): Task | null;
+  listTasks(): readonly Task[];
+  listTaskRuns(taskId: string): readonly TaskRunHistoryInfo[];
+  listWorkerLeases(taskId?: string): readonly WorkerLease[];
   listTaskRevisions(taskId: string): readonly TaskRevisionInfo[];
   addTaskDependency(taskId: string, dependsOnTaskId: string): TaskDependencyInfo;
   listTaskDependencies(taskId: string): readonly TaskDependencyInfo[];

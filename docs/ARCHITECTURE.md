@@ -19,7 +19,9 @@ The durable building blocks are:
   correlation IDs, criteria, selected skill instructions, MCP descriptors, and
   budget, recorded before worker execution.
 - **Worker message** — ordered, idempotent progress/heartbeat/report/error
-  traffic persisted before it is considered delivered.
+  traffic persisted before it is considered delivered. Worker reports require
+  adapter and session references alongside run/attempt correlation; those
+  references are source claims and do not qualify adapter identity by themselves.
 - **Evidence / Audit event** — worker claims remain distinct from
   orchestrator-verified acceptance evidence; audit events are hash chained and
   atomically placed in the outbox.
@@ -44,6 +46,8 @@ intents, progress cursors/events, evidence, acceptance decisions, audit events,
 outbox records, recovery state, projects, workers, leases, skills, MCP profiles,
 plugins, worker messages, and LLM usage. Schema changes use versioned
 migrations.
+Task content has immutable, content-hashed revision snapshots; explicit
+dependency edges and idempotent create-command keys also live in SQLite.
 Filesystem and Git hold source, diffs, and artifacts; they are not security
 boundaries.
 

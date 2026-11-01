@@ -1,0 +1,16 @@
+{
+  "protocolVersion": 1,
+  "kind": "welcome",
+  "messageId": "welcome-1",
+  "correlationId": "startup-1",
+  "causationId": "hello-1",
+  "sender": { "id": "orchestrator-core", "role": "backend" },
+  "selectedProtocol": 1,
+  "backendVersion": "0.1.0",
+  "buildId": "fixture-build",
+  "schemaVersion": 1,
+  "databaseSchemaVersion": 12,
+  "processSupervision": "unverified",
+  "ready": true,
+  "capabilities": [{ "name": "tasks.list", "state": "supported" }]
+}

@@ -7,6 +7,7 @@ import test from "node:test";
 import { OpenAICompatibleAdapter } from "../src/harness/openai-compatible-adapter";
 import { openDatabase } from "../src/persistence/database";
 import { RunRepository } from "../src/persistence/run-repository";
+import { DispatchRepository } from "../src/persistence/dispatch-repository";
 import { TaskRepository } from "../src/persistence/task-repository";
 import { PolicyRepository } from "../src/persistence/policy-repository";
 import { createApprovalRequest } from "../src/policy/policy";
@@ -59,16 +60,68 @@ test("SDK installs capabilities, claims a task, and preserves worker handoff tra
       leaseToken: assignment.lease.leaseToken,
       sequence: 3,
       outcome: "succeeded",
-      summary: "Worker completed the task"
+      summary: "Worker completed the task",
+      source: {adapterId: "fixture-worker-adapter", sessionId: "fixture-worker-session"}
     });
-    const trace = [];
-    for await (const event of sdk.streamRun(assignment.run.id, { pollMs: 1 })) trace.push(event.kind);
-    assert.ok(trace.includes("audit"));
-    assert.ok(trace.includes("worker_message"));
+    const trace: import("../src/sdk/contracts").RunStreamEvent[] = [];
+    for await (const event of sdk.streamRun(assignment.run.id, { pollMs: 1 })) trace.push(event);
+    assert.ok(trace.some((event) => event.kind === "audit"));
+    assert.ok(trace.some((event) => event.kind === "worker_message"));
+    const report = trace.find((event) => event.kind === "worker_message" && event.message.kind === "report");
+    assert.ok(report?.kind === "worker_message");
+    assert.equal((report.message.payload as {source: {adapterId: string; sessionId: string}}).source.adapterId, "fixture-worker-adapter");
+    assert.equal((report.message.payload as {source: {adapterId: string; sessionId: string}}).source.sessionId, "fixture-worker-session");
     assert.equal((database.prepare("SELECT state FROM runs WHERE id = ?").get(assignment.run.id) as { state: string }).state, "verification");
   } finally {
     database.close();
   }
+});
+
+test("run stream includes persisted correlated adapter progress events", async () => {
+  const database = openDatabase(":memory:");
+  try {
+    const sdk = createOrchestratorSdk(database);
+    const worker = sdk.registerWorker({name: "timeline-worker"});
+    sdk.createTask({title: "Timeline task", description: "Trace persisted events", acceptanceCriteria: ["progress visible"], riskTier: 1});
+    const assignment = sdk.claimTask(worker.id);
+    assert.ok(assignment);
+    const correlation = {dispatchId: "timeline-dispatch", runId: assignment.run.id, attemptId: assignment.attempt.id};
+    const dispatch = new DispatchRepository(database);
+    dispatch.persistIntent({
+      intent: {
+        id: "timeline-intent",
+        dispatchId: correlation.dispatchId,
+        idempotencyKey: "timeline-idempotency",
+        correlation,
+        taskId: assignment.task.id,
+        runId: assignment.run.id,
+        attemptId: assignment.attempt.id,
+        route: {routeId: "fixture", provider: {state: "known", name: "fixture"}, model: {state: "known", name: "fixture-v1"}, reportedBy: "adapter"},
+        authorization: {runId: assignment.run.id, attemptId: assignment.attempt.id, actionDigest: "digest", approvalId: null, policyVersion: "policy-v1"},
+        deadlineAt: "2099-01-01T00:00:00.000Z",
+        state: "persisted",
+        createdAt: "2026-01-01T00:00:00.000Z"
+      },
+      request: {} as never
+    });
+    const progress = {
+      eventId: "timeline-progress-1",
+      correlation,
+      sequence: 1,
+      occurredAt: "2026-01-01T00:00:01.000Z",
+      kind: "message" as const,
+      message: "fixture progress",
+      evidence: []
+    };
+    dispatch.recordProgress(progress, {disposition: "accepted", reason: "", cursor: {correlation, lastSequence: 1, eventIds: [progress.eventId]}});
+    sdk.reportTask(worker.id, {leaseToken: assignment.lease.leaseToken, sequence: 1, outcome: "succeeded", summary: "finished", source: {adapterId: "timeline-fixture", sessionId: "timeline-session"}});
+    const timeline = [];
+    for await (const event of sdk.streamRun(assignment.run.id, {pollMs: 1})) timeline.push(event);
+    const streamedProgress = timeline.find((event) => event.kind === "progress");
+    assert.ok(streamedProgress?.kind === "progress");
+    assert.equal(streamedProgress.event.eventId, progress.eventId);
+    assert.equal(streamedProgress.event.correlation.attemptId, assignment.attempt.id);
+  } finally { database.close(); }
 });
 
 test("SDK rejects expired leases and capabilities not selected for the task", async () => {
@@ -127,7 +180,7 @@ test("SDK does not reclaim a verified worker report while review is acknowledged
     const task = sdk.createTask({title: "Review fence", description: "", acceptanceCriteria: ["review"], riskTier: 1});
     const assignment = sdk.claimTask(worker.id);
     assert.ok(assignment);
-    sdk.reportTask(worker.id, {leaseToken: assignment.lease.leaseToken, sequence: 1, outcome: "succeeded", summary: "Done"});
+    sdk.reportTask(worker.id, {leaseToken: assignment.lease.leaseToken, sequence: 1, outcome: "succeeded", summary: "Done", source: {adapterId: "review-fixture", sessionId: assignment.run.id}});
     assert.equal((database.prepare("SELECT status FROM message_deliveries WHERE task_id=?").get(task.id) as {status: string}).status, "acknowledged");
     assert.equal(sdk.claimTask(worker.id), null);
     assert.equal((database.prepare("SELECT count(*) AS count FROM runs WHERE task_id=?").get(task.id) as {count: number}).count, 1);
@@ -140,11 +193,43 @@ test("SDK does not reclaim a verified worker report while review is acknowledged
     const task = sdk.createTask({title: "Deferred review fence", description: "", acceptanceCriteria: ["review"], riskTier: 1});
     const assignment = sdk.claimTask(worker.id);
     assert.ok(assignment);
-    new SdkRepository(deferredDb).reportTask(worker.id, {leaseToken: assignment.lease.leaseToken, sequence: 1, outcome: "succeeded", summary: "Done"});
+    new SdkRepository(deferredDb).reportTask(worker.id, {leaseToken: assignment.lease.leaseToken, sequence: 1, outcome: "succeeded", summary: "Done", source: {adapterId: "review-fixture", sessionId: assignment.run.id}});
     assert.equal((deferredDb.prepare("SELECT status FROM message_deliveries WHERE task_id=?").get(task.id) as {status: string}).status, "pending");
     assert.equal(sdk.claimTask(worker.id), null);
     assert.equal((deferredDb.prepare("SELECT count(*) AS count FROM runs WHERE task_id=?").get(task.id) as {count: number}).count, 1);
   } finally { deferredDb.close(); }
+});
+
+test("SDK exposes persisted state, revisions task content, and gates claims on dependency completion", () => {
+  const database = openDatabase(":memory:");
+  try {
+    const sdk = createOrchestratorSdk(database);
+    const project = sdk.createProject({name: "Queryable project"});
+    const dependent = sdk.createTask({projectId: project.id, title: "Dependent task", description: "initial", acceptanceCriteria: ["ready"], riskTier: 1, idempotencyKey: "dependent-task"});
+    const prerequisite = sdk.createTask({projectId: project.id, title: "Prerequisite", description: "", acceptanceCriteria: ["complete"], riskTier: 1});
+    database.prepare("UPDATE tasks SET created_at=? WHERE id=?").run("2026-01-01T00:00:00.000Z", dependent.id);
+    sdk.updateTask(dependent.id, {title: "Dependent task revised"});
+    assert.equal(sdk.getProject(project.id)?.id, project.id);
+    assert.equal(sdk.listProjects().length, 1);
+    assert.equal(sdk.getTask(dependent.id)?.title, "Dependent task revised");
+    assert.equal(sdk.listTasks().length, 2);
+    const revisions = sdk.listTaskRevisions(dependent.id);
+    assert.equal(revisions.length, 2);
+    assert.notEqual(revisions[0]?.contentHash, revisions[1]?.contentHash);
+    sdk.addTaskDependency(dependent.id, prerequisite.id);
+    assert.equal(sdk.listTaskDependencies(dependent.id).length, 1);
+
+    const worker = sdk.registerWorker({name: "dependency-worker"});
+    assert.throws(() => sdk.claimTask(worker.id), /blocked by policy/i);
+    assert.ok(database.prepare("SELECT 1 FROM policy_decisions WHERE reason_code='UNRESOLVED_PREREQUISITE'").get());
+    assert.equal(sdk.listWorkerLeases(dependent.id).length, 0);
+    new TaskRepository(database).updateStatus(prerequisite.id, "completed");
+    new TaskRepository(database).updateStatus(dependent.id, "planned");
+    const assignment = sdk.claimTask(worker.id);
+    assert.equal(assignment?.task.id, dependent.id);
+    assert.equal(sdk.listTaskRuns(dependent.id).length, 2);
+    assert.equal(sdk.listWorkerLeases(dependent.id).length, 1);
+  } finally { database.close(); }
 });
 
 test("SDK capacity is shared across independent SQLite connections and worker claims", () => {
@@ -288,7 +373,8 @@ test("SDK executes selected stdio MCP tools and plugins through the worker lease
       leaseToken: assignment.lease.leaseToken,
       sequence: 3,
       outcome: "succeeded",
-      summary: "MCP and plugin completed"
+      summary: "MCP and plugin completed",
+      source: {adapterId: "sdk-capability-fixture", sessionId: assignment.run.id}
     });
     assert.equal((database.prepare("SELECT count(*) AS count FROM worker_messages WHERE run_id = ?").get(assignment.run.id) as { count: number }).count, 4);
     assert.equal(task.id, assignment.task.id);
@@ -516,7 +602,7 @@ test("successful report atomically emits and consumes a correlated review reques
     const worker = sdk.registerWorker({name: "review-worker"});
     sdk.createTask({title: "Review slice", description: "", acceptanceCriteria: ["review requested"], riskTier: 1});
     const assignment = sdk.claimTask(worker.id)!;
-    const input = {leaseToken: assignment.lease.leaseToken, sequence: 1, outcome: "succeeded" as const, summary: "done"};
+    const input = {leaseToken: assignment.lease.leaseToken, sequence: 1, outcome: "succeeded" as const, summary: "done", source: {adapterId: "review-fixture", sessionId: assignment.run.id}};
     sdk.reportTask(worker.id, input);
     const request = database.prepare("SELECT * FROM review_requests WHERE run_id=?").get(assignment.run.id) as {message_id: string; correlation_id: string; causation_id: string; report_message_id: string};
     assert.ok(request);
@@ -538,7 +624,7 @@ test("failed semantic enqueue rolls back worker report and producer lifecycle ch
     sdk.createTask({title: "Rollback", description: "", acceptanceCriteria: ["atomic"], riskTier: 1});
     const assignment = sdk.claimTask(worker.id)!;
     database.exec("CREATE TRIGGER reject_semantic BEFORE INSERT ON outbox WHEN NEW.event_type='internal.message' BEGIN SELECT RAISE(ABORT,'injected enqueue failure'); END");
-    const input = {leaseToken: assignment.lease.leaseToken, sequence: 1, outcome: "succeeded" as const, summary: "done"};
+    const input = {leaseToken: assignment.lease.leaseToken, sequence: 1, outcome: "succeeded" as const, summary: "done", source: {adapterId: "review-fixture", sessionId: assignment.run.id}};
     assert.throws(() => sdk.reportTask(worker.id, input), /injected/);
     assert.deepEqual(database.prepare("SELECT state FROM runs WHERE id=?").get(assignment.run.id), {state: "running"});
     assert.deepEqual(database.prepare("SELECT COUNT(*) AS n FROM worker_messages WHERE kind='report'").get(), {n: 0});
@@ -555,7 +641,7 @@ test("late worker reports cannot supersede a newer authoritative attempt", () =>
     sdk.createTask({title: "Stale", description: "", acceptanceCriteria: ["authority"], riskTier: 1});
     const assignment = sdk.claimTask(worker.id)!;
     database.prepare("INSERT INTO attempts (id,run_id,outcome,created_at) VALUES ('new-authority',?,'pending',?)").run(assignment.run.id, assignment.attempt.createdAt);
-    assert.throws(() => sdk.reportTask(worker.id, {leaseToken: assignment.lease.leaseToken, sequence: 1, outcome: "succeeded", summary: "late"}), /stale|authoritative/i);
+    assert.throws(() => sdk.reportTask(worker.id, {leaseToken: assignment.lease.leaseToken, sequence: 1, outcome: "succeeded", summary: "late", source: {adapterId: "review-fixture", sessionId: assignment.run.id}}), /stale|authoritative/i);
     assert.deepEqual(database.prepare("SELECT state FROM runs WHERE id=?").get(assignment.run.id), {state: "running"});
     assert.deepEqual(database.prepare("SELECT COUNT(*) AS n FROM worker_messages WHERE kind='report'").get(), {n: 0});
   } finally { database.close(); }
@@ -567,7 +653,7 @@ test("a preexisting worker report message cannot masquerade as a committed lifec
     const sdk = createOrchestratorSdk(database), worker = sdk.registerWorker({name: "preexisting-report"});
     sdk.createTask({title: "Report provenance", description: "", acceptanceCriteria: ["atomic completion"], riskTier: 1});
     const assignment = sdk.claimTask(worker.id)!;
-    const input = {leaseToken: assignment.lease.leaseToken, sequence: 1, outcome: "succeeded" as const, summary: "done"};
+    const input = {leaseToken: assignment.lease.leaseToken, sequence: 1, outcome: "succeeded" as const, summary: "done", source: {adapterId: "review-fixture", sessionId: assignment.run.id}};
     sdk.sendWorkerMessage(worker.id, {leaseToken: input.leaseToken, sequence: 1, kind: "report", payload: input, idempotencyKey: `report:${input.leaseToken}:1`});
     sdk.reportTask(worker.id, input);
     assert.deepEqual(database.prepare("SELECT state FROM runs WHERE id=?").get(assignment.run.id), {state: "verification"});

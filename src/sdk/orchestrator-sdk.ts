@@ -28,12 +28,14 @@ import type {
   SkillRecord,
   TaskAssignment,
   TaskDependencyInfo,
+  TaskRunHistoryInfo,
   TaskRevisionInfo,
   WorkerLease,
   WorkerMessage,
   WorkerMessageInput,
   WorkerRegistration,
   WorkerReportInput,
+  UpdateTaskContentInput,
   LlmTaskStreamEvent
 } from "./contracts";
 
@@ -88,8 +90,36 @@ export class OrchestratorSdkImpl implements OrchestratorSdk {
     return this.repository.createProject(input);
   }
 
+  public getProject(projectId: string): Project | null {
+    return this.repository.getProject(projectId);
+  }
+
+  public listProjects(): readonly Project[] {
+    return this.repository.listProjects();
+  }
+
   public createTask(input: import("../shared/ipc").CreateTaskInput) {
     return this.repository.createTask(input);
+  }
+
+  public updateTask(taskId: string, input: UpdateTaskContentInput) {
+    return this.repository.updateTask(taskId, input);
+  }
+
+  public getTask(taskId: string) {
+    return this.repository.getTask(taskId);
+  }
+
+  public listTasks() {
+    return this.repository.listTasks();
+  }
+
+  public listTaskRuns(taskId: string): readonly TaskRunHistoryInfo[] {
+    return this.repository.listTaskRuns(taskId);
+  }
+
+  public listWorkerLeases(taskId?: string): readonly WorkerLease[] {
+    return this.repository.listWorkerLeases(taskId);
   }
 
   public listTaskRevisions(taskId: string): readonly TaskRevisionInfo[] {
@@ -328,6 +358,7 @@ export class OrchestratorSdkImpl implements OrchestratorSdk {
     const pollMs = options.pollMs ?? 100;
     let auditCursor: { readonly createdAt: string; readonly id: string } | null = null;
     let messageCursor: { readonly createdAt: string; readonly id: string } | null = null;
+    let progressCursor: { readonly occurredAt: string; readonly eventId: string } | null = null;
     let terminal = false;
     while (!terminal) {
       const auditRows = this.database.prepare(
@@ -336,10 +367,6 @@ export class OrchestratorSdkImpl implements OrchestratorSdk {
            AND (? IS NULL OR created_at > ? OR (created_at = ? AND id > ?))
          ORDER BY created_at, id`
       ).all(runId, auditCursor?.createdAt ?? null, auditCursor?.createdAt ?? null, auditCursor?.createdAt ?? null, auditCursor?.id ?? "") as AuditRow[];
-      for (const row of auditRows) {
-        auditCursor = { createdAt: row.created_at, id: row.id };
-        yield { kind: "audit", event: audit(row) };
-      }
       const messages = this.database.prepare(
         `SELECT * FROM worker_messages
          WHERE run_id = ?
@@ -349,17 +376,49 @@ export class OrchestratorSdkImpl implements OrchestratorSdk {
         id: string; run_id: string; attempt_id: string; worker_id: string | null; direction: WorkerMessage["direction"];
         kind: WorkerMessage["kind"]; sequence: number; payload_json: string; idempotency_key: string | null; created_at: string
       }>;
-      for (const row of messages) {
-        messageCursor = { createdAt: row.created_at, id: row.id };
-        yield {
-          kind: "worker_message",
-          message: {
-            id: row.id, runId: row.run_id, attemptId: row.attempt_id, workerId: row.worker_id,
-            direction: row.direction, kind: row.kind, sequence: row.sequence,
-            payload: JSON.parse(row.payload_json) as unknown, idempotencyKey: row.idempotency_key, createdAt: row.created_at
-          }
-        };
-        if (row.kind === "report") terminal = true;
+      const progressRows = this.database.prepare(
+        `SELECT event_id, payload_json, occurred_at
+         FROM progress_events
+         WHERE run_id = ?
+           AND (? IS NULL OR occurred_at > ? OR (occurred_at = ? AND event_id > ?))
+         ORDER BY occurred_at, event_id`
+      ).all(runId, progressCursor?.occurredAt ?? null, progressCursor?.occurredAt ?? null, progressCursor?.occurredAt ?? null, progressCursor?.eventId ?? "") as Array<{
+        event_id: string; payload_json: string; occurred_at: string
+      }>;
+      const pending: Array<{
+        readonly at: string;
+        readonly id: string;
+        readonly rank: number;
+        readonly source: "audit" | "worker_message" | "progress";
+        readonly row: AuditRow | typeof messages[number] | typeof progressRows[number];
+      }> = [
+        ...auditRows.map((row) => ({at: row.created_at, id: row.id, rank: 0, source: "audit" as const, row})),
+        ...progressRows.map((row) => ({at: row.occurred_at, id: row.event_id, rank: 1, source: "progress" as const, row})),
+        ...messages.map((row) => ({at: row.created_at, id: row.id, rank: 2, source: "worker_message" as const, row}))
+      ];
+      pending.sort((left, right) => left.at.localeCompare(right.at) || left.rank - right.rank || left.id.localeCompare(right.id));
+      for (const item of pending) {
+        if (item.source === "audit") {
+          const row = item.row as AuditRow;
+          auditCursor = {createdAt: row.created_at, id: row.id};
+          yield {kind: "audit", event: audit(row)};
+        } else if (item.source === "progress") {
+          const row = item.row as typeof progressRows[number];
+          progressCursor = {occurredAt: row.occurred_at, eventId: row.event_id};
+          yield {kind: "progress", event: JSON.parse(row.payload_json) as ProgressEvent};
+        } else {
+          const row = item.row as typeof messages[number];
+          messageCursor = {createdAt: row.created_at, id: row.id};
+          yield {
+            kind: "worker_message",
+            message: {
+              id: row.id, runId: row.run_id, attemptId: row.attempt_id, workerId: row.worker_id,
+              direction: row.direction, kind: row.kind, sequence: row.sequence,
+              payload: JSON.parse(row.payload_json) as unknown, idempotencyKey: row.idempotency_key, createdAt: row.created_at
+            }
+          };
+          if (row.kind === "report") terminal = true;
+        }
       }
       const run = this.database.prepare("SELECT state FROM runs WHERE id = ?").get(runId) as { state: string } | undefined;
       if (run && ["accepted", "rejected", "blocked", "inconclusive", "recovery_required"].includes(run.state)) terminal = true;

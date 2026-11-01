@@ -1,0 +1,13 @@
+{
+  "protocolVersion": 1,
+  "kind": "hello",
+  "messageId": "hello-1",
+  "correlationId": "startup-1",
+  "causationId": null,
+  "sender": { "id": "typescript-client", "role": "client" },
+  "minimumProtocol": 1,
+  "maximumProtocol": 1,
+  "clientVersion": "0.1.0",
+  "schemaVersion": 1,
+  "requiredCapabilities": ["tasks.list"]
+}

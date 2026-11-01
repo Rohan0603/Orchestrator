@@ -247,7 +247,8 @@ test("forward migration preserves legacy state and generic outbox rows", () => {
     const msg = seed(db); new EventRepository(db).append("legacy.fact", {taskId: msg.taskId}, NOW);
     const originalCount = count(db, "outbox");
     // Restore the exact schema-11 shape on this disposable fixture, then migrate forward.
-    db.exec(`DROP TABLE review_requests; DROP TABLE processed_messages; DROP TABLE message_delivery_attempts;
+    db.exec(`DROP TABLE task_commands; DROP TABLE task_dependencies; DROP TABLE task_revisions;
+      DROP TABLE review_requests; DROP TABLE processed_messages; DROP TABLE message_delivery_attempts;
       DROP TABLE message_deliveries; DROP TRIGGER runs_lifecycle_revision; ALTER TABLE runs DROP COLUMN lifecycle_revision;
       UPDATE schema_version SET version=11;`);
     applyMigrations(db);

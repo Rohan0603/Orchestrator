@@ -1,0 +1,11 @@
+{
+  "protocolVersion": 1,
+  "kind": "response",
+  "messageId": "msg-response-1",
+  "correlationId": "corr-list-1",
+  "causationId": "msg-list-1",
+  "sender": { "id": "orchestrator-core", "role": "backend" },
+  "inReplyTo": "msg-list-1",
+  "ok": true,
+  "result": []
+}

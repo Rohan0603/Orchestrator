@@ -1,0 +1,10 @@
+{
+  "protocolVersion": 1,
+  "kind": "request",
+  "messageId": "msg-list-1",
+  "correlationId": "corr-list-1",
+  "causationId": null,
+  "sender": { "id": "typescript-client", "role": "client" },
+  "method": "tasks.list",
+  "payload": {}
+}

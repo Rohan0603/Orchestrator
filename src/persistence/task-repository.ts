@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
-import type { CreateTaskInput } from "../shared/ipc";
+import { parseCreateTaskInput, type CreateTaskInput } from "../shared/ipc";
 import type { Task } from "../shared/domain";
 import { assertTaskTransition } from "../shared/domain";
 import { PersistenceError } from "./database";
@@ -67,6 +67,7 @@ export class TaskRepository {
   }
 
   public create(input: CreateTaskInput): Task {
+    input = parseCreateTaskInput(input);
     const idempotencyKey = input.idempotencyKey?.trim();
     if (idempotencyKey && !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/.test(idempotencyKey)) throw new Error("Task idempotency key is invalid");
     const commandPayload = {
@@ -187,6 +188,60 @@ export class TaskRepository {
       })();
     } catch (error) {
       throw new PersistenceError(`Task dependency creation failed${error instanceof Error ? `: ${error.message}` : ""}`, {cause: error});
+    }
+  }
+
+  public updateContent(taskId: string, input: Partial<Pick<CreateTaskInput,
+    "projectId" | "parentTaskId" | "title" | "description" | "acceptanceCriteria" | "riskTier" |
+    "skillIds" | "mcpServerIds" | "pluginIds" | "tokenBudget">>): Task {
+    try {
+      return this.database.transaction(() => {
+        const row = this.database.prepare("SELECT * FROM tasks WHERE id=?").get(taskId) as TaskRow | undefined;
+        if (!row) throw new Error("Task not found");
+        if (this.database.prepare(`SELECT 1 FROM runs WHERE task_id=? AND state NOT IN ('blocked','rejected','inconclusive') LIMIT 1`).get(taskId)) {
+          throw new Error("Cannot revise task content while a run is active or awaiting review");
+        }
+        const current = fromRow(row);
+        const next: Task = {
+          ...current,
+          projectId: input.projectId === undefined ? current.projectId : input.projectId,
+          parentTaskId: input.parentTaskId === undefined ? current.parentTaskId : input.parentTaskId,
+          title: input.title === undefined ? current.title : input.title.trim(),
+          description: input.description === undefined ? current.description : input.description,
+          acceptanceCriteria: input.acceptanceCriteria === undefined ? current.acceptanceCriteria : input.acceptanceCriteria.map((criterion) => criterion.trim()),
+          riskTier: input.riskTier === undefined ? current.riskTier : input.riskTier,
+          skillIds: input.skillIds === undefined ? current.skillIds : [...input.skillIds],
+          mcpServerIds: input.mcpServerIds === undefined ? current.mcpServerIds : [...input.mcpServerIds],
+          pluginIds: input.pluginIds === undefined ? current.pluginIds : [...input.pluginIds],
+          tokenBudget: input.tokenBudget === undefined ? current.tokenBudget : input.tokenBudget
+        };
+        if (!next.title || next.title.length > 200 || next.description.length > 10_000 ||
+            next.acceptanceCriteria.length === 0 || next.acceptanceCriteria.some((criterion) => !criterion.trim()) ||
+            (next.riskTier !== 1 && next.riskTier !== 2 && next.riskTier !== 3) ||
+            (next.tokenBudget !== null && (!Number.isSafeInteger(next.tokenBudget) || next.tokenBudget <= 0)) ||
+            next.parentTaskId === taskId) throw new Error("Invalid task content revision");
+        const previousSnapshot = this.revisions(taskId).at(-1);
+        const snapshot = {
+          taskId: next.id, projectId: next.projectId, parentTaskId: next.parentTaskId, title: next.title,
+          description: next.description, acceptanceCriteria: next.acceptanceCriteria, riskTier: next.riskTier,
+          skillIds: next.skillIds, mcpServerIds: next.mcpServerIds, pluginIds: next.pluginIds, tokenBudget: next.tokenBudget
+        };
+        const serialized = JSON.stringify(snapshot);
+        if (previousSnapshot?.snapshotJson === serialized) return current;
+        this.database.prepare(`UPDATE tasks SET project_id=?,parent_task_id=?,title=?,description=?,acceptance_criteria=?,risk_tier=?,
+          skill_ids=?,mcp_server_ids=?,plugin_ids=?,token_budget=? WHERE id=?`).run(
+          next.projectId, next.parentTaskId, next.title, next.description, JSON.stringify(next.acceptanceCriteria), next.riskTier,
+          JSON.stringify(next.skillIds), JSON.stringify(next.mcpServerIds), JSON.stringify(next.pluginIds), next.tokenBudget, taskId
+        );
+        const revisionNumber = (previousSnapshot?.revision ?? 0) + 1;
+        const revision = createTaskRevision(this.database, snapshot, revisionNumber, new Date().toISOString());
+        appendDurableEvent(this.database, "task.revised", {taskId, revision: revision.revision, previousHash: previousSnapshot?.contentHash ?? null, contentHash: revision.contentHash}, revision.createdAt, {
+          correlation: {taskId}, idempotencyKey: `task.revised:${taskId}:${revision.revision}`
+        });
+        return next;
+      })();
+    } catch (error) {
+      throw new PersistenceError(`Task content update failed${error instanceof Error ? `: ${error.message}` : ""}`, {cause: error});
     }
   }
 

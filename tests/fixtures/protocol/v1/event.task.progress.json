@@ -1,0 +1,17 @@
+{
+  "protocolVersion": 1,
+  "kind": "event",
+  "messageId": "event-progress-1",
+  "correlationId": "run-1",
+  "causationId": "worker-message-1",
+  "sender": { "id": "orchestrator-core", "role": "backend" },
+  "eventType": "task.progress",
+  "sequence": 1,
+  "cursor": "cursor-1",
+  "occurredAt": "2026-11-01T10:00:00.000Z",
+  "taskId": "task-1",
+  "runId": "run-1",
+  "attemptId": "attempt-1",
+  "expectedRevision": 2,
+  "payload": { "summary": "Worker started" }
+}

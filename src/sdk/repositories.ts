@@ -22,14 +22,17 @@ import type {
   SkillRecord,
   TaskAssignment,
   TaskDependencyInfo,
+  TaskRunHistoryInfo,
   TaskRevisionInfo,
   WorkerCapability,
   WorkerLease,
   WorkerMessage,
   WorkerMessageInput,
   WorkerRegistration,
-  WorkerReportInput
+  WorkerReportInput,
+  UpdateTaskContentInput
 } from "./contracts";
+import { RunRepository } from "../persistence/run-repository";
 
 function json<T>(value: string, fallback: T): T {
   try {
@@ -81,13 +84,41 @@ export class SdkRepository {
     }
   }
 
-  public getTask(taskId: string): Task | null {
-    const row = this.database.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId) as Record<string, unknown> | undefined;
-    return row ? this.taskFromRow(row) : null;
+  public getProject(projectId: string): Project | null {
+    const row = this.database.prepare("SELECT * FROM projects WHERE id=?").get(projectId) as Record<string, unknown> | undefined;
+    return row ? {id: String(row.id), name: String(row.name), description: String(row.description), repositoryPath: row.repository_path ? String(row.repository_path) : null,
+      defaultBranch: row.default_branch ? String(row.default_branch) : null, createdAt: String(row.created_at)} : null;
+  }
+
+  public listProjects(): readonly Project[] {
+    return (this.database.prepare("SELECT id FROM projects ORDER BY created_at,id").all() as Array<{id: string}>).map((row) => this.getProject(row.id)!).filter(Boolean);
   }
 
   public createTask(input: import("../shared/ipc").CreateTaskInput): Task {
     return new TaskRepository(this.database).create(input);
+  }
+
+  public updateTask(taskId: string, input: UpdateTaskContentInput): Task {
+    return new TaskRepository(this.database).updateContent(taskId, input);
+  }
+
+  public getTask(taskId: string): Task | null {
+    return new TaskRepository(this.database).get(taskId);
+  }
+
+  public listTasks(): readonly Task[] {
+    return new TaskRepository(this.database).list();
+  }
+
+  public listTaskRuns(taskId: string): readonly TaskRunHistoryInfo[] {
+    return new RunRepository(this.database).listForTask(taskId);
+  }
+
+  public listWorkerLeases(taskId?: string): readonly WorkerLease[] {
+    const rows = taskId
+      ? this.database.prepare("SELECT lease_token FROM worker_leases WHERE task_id=? ORDER BY created_at,id").all(taskId)
+      : this.database.prepare("SELECT lease_token FROM worker_leases ORDER BY created_at,id").all();
+    return (rows as Array<{lease_token: string}>).map((row) => this.getActiveLease(row.lease_token));
   }
 
   public listTaskRevisions(taskId: string): readonly TaskRevisionInfo[] {
@@ -355,6 +386,10 @@ export class SdkRepository {
   }
 
   private reportTaskInTransaction(workerId: string, input: WorkerReportInput): void {
+    if (
+      typeof input.source.adapterId !== "string" || input.source.adapterId.trim().length === 0 || input.source.adapterId.length > 128 ||
+      typeof input.source.sessionId !== "string" || input.source.sessionId.trim().length === 0 || input.source.sessionId.length > 256
+    ) throw new DeliveryFailure("permanent", "invalid_worker_source_reference");
     const reportKey = `report:${input.leaseToken}:${input.sequence}`;
     const existing = this.database.prepare("SELECT payload_json,worker_id,kind,direction FROM worker_messages WHERE idempotency_key = ?").get(reportKey) as { payload_json: string; worker_id: string; kind: string; direction: string } | undefined;
     if (existing) {
@@ -645,9 +680,13 @@ export class SdkRepository {
   }
 
   private taskPrerequisitesResolved(task: Task): boolean {
-    if (!task.parentTaskId) return true;
-    const parent = this.database.prepare("SELECT status FROM tasks WHERE id=?").get(task.parentTaskId) as { status: string } | undefined;
-    return parent?.status === "completed";
+    if (task.parentTaskId) {
+      const parent = this.database.prepare("SELECT status FROM tasks WHERE id=?").get(task.parentTaskId) as { status: string } | undefined;
+      if (parent?.status !== "completed") return false;
+    }
+    const unresolved = this.database.prepare(`SELECT 1 FROM task_dependencies d JOIN tasks prerequisite ON prerequisite.id=d.depends_on_task_id
+      WHERE d.task_id=? AND prerequisite.status<>'completed' LIMIT 1`).get(task.id);
+    return !unresolved;
   }
 
   private pendingRun(task: Task, row: Record<string, unknown>): { run: Run; attempt: Attempt } {

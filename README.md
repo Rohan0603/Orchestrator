@@ -164,12 +164,11 @@ Deterministic failure injection covers uncertainty after dispatch intent,
 after fixture launch acknowledgement, and before terminal persistence. Each
 case records `recovery_required` and does not replay its dispatch intent.
 
-`npm test` compiles all suites, then runs eleven deterministic contract tests,
-five adapter conformance tests, five local execution/restart tests, eight real
-SQLite tests, one real Electron second-WebContents IPC test, and one UI/core Electron test: 30 tests total. The
-Electron-targeted native SQLite
-binding cannot load under ordinary Node.js; use `npm test` rather than invoking
-the compiled tests with `node --test`.
+`npm test` compiles all suites, then runs 111 Electron-targeted cases across
+the lifecycle, adapter, execution/restart, SQLite, IPC/UI, native ownership,
+SDK, CLI, protocol, and delivery suites, plus four Node-based runner checks.
+The Electron-targeted native SQLite binding cannot load under ordinary Node.js;
+use `npm test` rather than invoking the compiled SQLite tests with `node --test`.
 Electron test cleanup terminates only the runner-owned child handle; it does
 not infer descendant ownership from parent PIDs.
 
@@ -200,6 +199,11 @@ node experiments/runners/run-freellmapi-smoke.mjs --output <new-json> --source-r
 For SQLite-authoritative durable qualification, use the Electron test harness
 and environment variables documented in
 [experiments/runners/README.md](experiments/runners/README.md).
+
+The headless SDK CLI queries the same SQLite state and includes a labelled
+fixture flow for creating a project/task, recording worker progress and an
+artifact, and printing the persisted trace. See
+[docs/SDK_CLI.md](docs/SDK_CLI.md) for commands and its acceptance boundaries.
 
 For the current generic freellmapi/OpenAI-compatible route, first run
 `npx freellmapi setup-generic --url http://127.0.0.1:31415` in the freellmapi
