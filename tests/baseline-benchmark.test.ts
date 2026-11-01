@@ -11,6 +11,7 @@ import Database from "better-sqlite3";
 import { NativeOwnershipService, resolveHelperPath } from "../src/execution/native-ownership";
 import { OpenAICompatibleAdapter } from "../src/harness/openai-compatible-adapter";
 import { openDatabase } from "../src/persistence/database";
+import { EventRepository } from "../src/persistence/events";
 import { RunRepository } from "../src/persistence/run-repository";
 import { createOrchestratorSdk } from "../src/sdk";
 import type { Task } from "../src/shared/domain";
@@ -73,6 +74,7 @@ async function runBaselineBenchmark(): Promise<void> {
   let ownedProcessCancellation: Record<string, unknown> | null = null;
   let storagePressure: Record<string, unknown> | null = null;
   let sustainedLockContention: Record<string, unknown> | null = null;
+  let outboxBacklog: Record<string, unknown> | null = null;
   let rendererWindow: BrowserWindow | undefined;
   let electronRendererStartupMs: number | null = null;
 
@@ -691,6 +693,61 @@ async function runBaselineBenchmark(): Promise<void> {
         database.close();
       }
     }
+
+    // Accumulate a durable notification backlog without a publisher, measure
+    // its peak depth, then drain it in bounded batches and verify all effects.
+    {
+      const database = openDatabase(join(workspace, "outbox-backlog.db"));
+      const events = new EventRepository(database);
+      const backlogSize = 1000;
+      let peakQueueDepth = 0;
+      const batchSizes: number[] = [];
+      try {
+        const enqueueStarted = performance.now();
+        for (let index = 0; index < backlogSize; index++) {
+          events.append("baseline.queue_probe", {sequence: index, payload: "q".repeat(128)});
+        }
+        const enqueueDurationMs = performance.now() - enqueueStarted;
+        const queuedBeforeDrain = events.pending(2000).length;
+        assert.equal(queuedBeforeDrain, backlogSize, "durable outbox backlog should retain every queued event");
+        peakQueueDepth = queuedBeforeDrain;
+
+        const recoveryStarted = performance.now();
+        let publishedCount = 0;
+        while (true) {
+          const batch = events.pending(100);
+          if (batch.length === 0) break;
+          batchSizes.push(batch.length);
+          for (const event of batch) events.markPublished(event.eventId);
+          publishedCount += batch.length;
+        }
+        const recoveryDurationMs = performance.now() - recoveryStarted;
+        const pendingAfterDrain = events.pending(2000).length;
+        const outboxRows = (database.prepare("SELECT count(*) AS count FROM outbox WHERE event_type='baseline.queue_probe'").get() as {count: number}).count;
+        const auditRows = (database.prepare("SELECT count(*) AS count FROM audit_events WHERE event_type='baseline.queue_probe'").get() as {count: number}).count;
+        assert.deepEqual(batchSizes, Array(10).fill(100), "backlog should be drained in bounded batches of 100");
+        assert.equal(publishedCount, backlogSize);
+        assert.equal(pendingAfterDrain, 0);
+        assert.equal(outboxRows, backlogSize, "each queued audit event should retain one outbox row");
+        assert.equal(auditRows, backlogSize, "every outbox notification should have one durable audit event");
+        outboxBacklog = {
+          scenario: "1,000 durable non-semantic outbox events accumulated before publisher recovery",
+          queuedEvents: queuedBeforeDrain,
+          peakQueueDepth,
+          enqueueDurationMs,
+          recoveryDurationMs,
+          recoveryBatchLimit: 100,
+          batchSizes,
+          publishedCount,
+          pendingAfterDrain,
+          throughputEventsPerSecond: publishedCount / (recoveryDurationMs / 1000),
+          auditRows,
+          outboxRows
+        };
+      } finally {
+        database.close();
+      }
+    }
   } catch (error) {
     workloadFailed = true;
     throw error;
@@ -730,6 +787,7 @@ async function runBaselineBenchmark(): Promise<void> {
     ownedProcessCancellation,
     storagePressure,
     sustainedLockContention,
+    outboxBacklog,
     confidence: {
       repetitionsPerScale: 1,
       variance: "No repeat trials are included; this run does not estimate run-to-run variance.",
@@ -742,7 +800,7 @@ async function runBaselineBenchmark(): Promise<void> {
       "Live external provider disconnect/reconnect behavior; only an injected synthetic mid-stream disconnect is measured, with no network call.",
       "Abrupt termination of the main Electron app or OS/power-loss crashes; a separate Electron-Node backend child crash and startup reconciliation is measured.",
       "OS-level disk-full behavior and extended SQLite lock contention beyond ten bounded conflicts; storage pressure and ten 10 ms lock timeouts use disposable database simulations.",
-      "Peak queue depth and allocation counts; database initialization, SDK construction, and database close are measured, but full Electron readiness is not."
+      "Peak in-memory queue depth and allocation counts; durable outbox peak depth/recovery is measured, but full Electron readiness is not."
     ]
   };
   mkdirSync(dirname(outputPath), {recursive: true});
