@@ -7,7 +7,7 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 static NEXT_DB: AtomicU64 = AtomicU64::new(0);
 
@@ -96,7 +96,6 @@ fn run_health(database_path: &std::path::Path, enable_wal: bool) -> (Value, Valu
 fn spawn_crash_worker(
     mode: &str,
     database_path: &std::path::Path,
-    payload: Option<&Value>,
     marker: &str,
 ) -> std::process::Child {
     let mut command =
@@ -105,12 +104,6 @@ fn spawn_crash_worker(
         .args(["--exact", "crash_worker_entrypoint", "--nocapture"])
         .env("ORC37_CRASH_WORKER_MODE", mode)
         .env("ORC37_CRASH_WORKER_DATABASE", database_path);
-    if let Some(payload) = payload {
-        command.env(
-            "ORC37_CRASH_WORKER_PAYLOAD",
-            serde_json::to_string(payload).expect("serialize crash worker task payload"),
-        );
-    }
     let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -212,22 +205,6 @@ fn crash_worker_entrypoint() {
                 }
             });
             panic!("crash worker unexpectedly left its transaction: {result:?}");
-        }
-        "after_commit" => {
-            let payload: Value = serde_json::from_str(
-                &std::env::var("ORC37_CRASH_WORKER_PAYLOAD").expect("crash worker task payload"),
-            )
-            .expect("parse crash worker task payload");
-            let mut store =
-                DatabaseStore::open_existing(&database_path).expect("open crash worker database");
-            store
-                .create_task(&payload)
-                .expect("commit task before suppressing response");
-            println!("ORC37_AFTER_COMMIT_RESPONSE_SUPPRESSED");
-            std::io::stdout().flush().expect("flush crash marker");
-            loop {
-                thread::sleep(Duration::from_secs(1));
-            }
         }
         _ => panic!("unsupported crash worker mode: {mode}"),
     }
@@ -403,7 +380,6 @@ fn process_death_before_commit_rolls_back_audit_and_outbox_intent() {
     let mut child = spawn_crash_worker(
         "before_commit",
         &database_path,
-        None,
         "ORC37_BEFORE_COMMIT_WRITES_READY",
     );
     child.kill().expect("kill Rust process before commit");
@@ -448,7 +424,7 @@ fn process_death_before_commit_rolls_back_audit_and_outbox_intent() {
 }
 
 #[test]
-fn process_death_after_commit_before_response_replays_one_task_and_event_set() {
+fn process_death_after_ipc_commit_before_client_receives_response_replays_one_task_and_event_set() {
     let directory = test_dir();
     let database_path = directory.join("state.sqlite");
     create_supported_database(&database_path);
@@ -456,25 +432,67 @@ fn process_death_after_commit_before_response_replays_one_task_and_event_set() {
         .unwrap_or_else(|error| panic!("fixture migration failed: {error:?}"));
     let payload = json!({
         "title": "Rust crash replay",
-        "description": "Commit before response, then retry after process death.",
+        "description": "x".repeat(9_000),
         "acceptanceCriteria": ["task, revision, audit and outbox do not duplicate"],
         "riskTier": 1,
         "idempotencyKey": "orc37-crash-replay-1"
     });
 
-    let mut child = spawn_crash_worker(
-        "after_commit",
-        &database_path,
-        Some(&payload),
-        "ORC37_AFTER_COMMIT_RESPONSE_SUPPRESSED",
+    let mut child = Command::new(env!("CARGO_BIN_EXE_orchestrator-core"))
+        .args(["serve", "--database"])
+        .arg(&database_path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn Rust Core for production IPC crash test");
+    let mut stdin = child.stdin.take().expect("take Rust Core stdin");
+    let mut stdout = child.stdout.take().expect("take Rust Core stdout");
+    write_frame(&mut stdin, &hello());
+    assert_eq!(read_frame(&mut stdout)["kind"], "welcome");
+    write_frame(
+        &mut stdin,
+        &json!({
+            "protocolVersion": 1,
+            "kind": "request",
+            "messageId": "task-create-before-ipc-crash",
+            "correlationId": "task-create-before-ipc-crash-correlation",
+            "causationId": null,
+            "sender": {"id": "typescript-client", "role": "client"},
+            "method": "tasks.create",
+            "payload": payload
+        }),
     );
-    child.kill().expect("kill Rust process before response");
-    assert!(
-        !child
-            .wait()
-            .expect("wait for killed Rust process")
-            .success()
-    );
+
+    let connection = Connection::open(&database_path).expect("observe committed IPC request");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let committed = connection
+            .query_row(
+                "SELECT count(*) FROM task_commands WHERE idempotency_key='orc37-crash-replay-1'",
+                [],
+                |row| row.get::<_, u32>(0),
+            )
+            .expect("query IPC commit marker");
+        if committed == 1 {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "IPC task creation did not commit"
+        );
+        assert!(child.try_wait().expect("check Rust Core process").is_none());
+        thread::sleep(Duration::from_millis(10));
+    }
+
+    // Keep stdout open but unread so the client cannot observe the response.
+    child
+        .kill()
+        .expect("kill Rust Core after commit before client reads response");
+    assert!(!child.wait().expect("wait for killed Rust Core").success());
+    drop(stdin);
+    drop(stdout);
+    drop(connection);
 
     let retry = run_task_create(&database_path, &payload);
     assert_eq!(retry["ok"], true, "replay should return the committed task");
