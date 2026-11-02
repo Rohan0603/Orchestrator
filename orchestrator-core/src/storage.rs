@@ -383,6 +383,22 @@ impl DatabaseStore {
         &self.info
     }
 
+    pub fn verify_full_integrity(&self) -> Result<(), StoreError> {
+        let mut statement = self
+            .connection
+            .prepare("PRAGMA integrity_check")
+            .map_err(StoreError::Validation)?;
+        let results = statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(StoreError::Validation)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(StoreError::Validation)?;
+        if results.len() != 1 || results[0] != "ok" {
+            return Err(StoreError::Incompatible("integrity check failed"));
+        }
+        Ok(())
+    }
+
     pub fn enable_wal(&mut self) -> Result<(), StoreError> {
         let mode: String = self
             .connection
@@ -1706,6 +1722,12 @@ mod tests {
         store
             .backup_into(&destination)
             .expect("create consistent backup");
+        let backup_store = DatabaseStore::open_existing(&destination)
+            .expect("reopen the backup for full integrity validation");
+        backup_store
+            .verify_full_integrity()
+            .expect("full integrity check should pass");
+        drop(backup_store);
         let backup = Connection::open(&destination).expect("open backup");
         assert_eq!(
             backup
