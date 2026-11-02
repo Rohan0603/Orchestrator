@@ -4,7 +4,7 @@
 
 **Goal:** Add a Rust-owned SQLite storage boundary that opens, validates, and exercises the supported TypeScript schema without allowing an unqualified production dual-writer cutover.
 
-**Architecture:** `orchestrator-core` owns one `rusqlite` connection for each process lifetime. It validates the existing schema version, required tables, and consumed columns before readiness, enables foreign keys, and exposes explicit transaction/backup primitives for later service migrations. The TypeScript backend stays the conformance oracle; Rust and TypeScript write-parity tests use separate disposable databases with a shared fixed fixture, and app-wide ownership cutover remains behind service parity gates.
+**Architecture:** `orchestrator-core` owns one `rusqlite` connection for each process lifetime. It validates the existing schema version, required tables, and consumed columns before readiness, enables foreign keys, and exposes explicit transaction/backup primitives for later service migrations. The TypeScript backend stays the conformance oracle; Rust and TypeScript read/write parity tests use separate disposable databases with shared fixed fixtures, and app-wide ownership cutover remains behind service parity gates.
 
 **Tech Stack:** Rust 2024, rusqlite 0.41.1 with bundled SQLite, Tokio stdio IPC v1, existing TypeScript `better-sqlite3` schema/migration baseline.
 
@@ -55,7 +55,7 @@
 
 **Files:** Add the smallest Rust persistence operation required by the parity evidence; add an Electron-targeted TypeScript baseline test and Rust storage tests using the same fixed event fixture against separate disposable databases; update `package.json` test counts/scripts.
 
-**Interfaces:** Add `DatabaseStore::append_durable_event(event_type, payload_json, created_at, correlation_json, idempotency_key) -> Result<AuditEvent, StoreError>`. A shared fixture pins the exact serialized JSON and hash. An Electron test creates a schema-13 database through `applyMigrations` and verifies the TypeScript audit/outbox projection; Rust writes that same fixture to an isolated schema-13 fixture and verifies the matching audit/outbox projection. The operation is not exposed through IPC, so there is no shared live database or concurrent writer. Never open both writers against the same database in parallel.
+**Interfaces:** Add `DatabaseStore::list_tasks() -> Result<Vec<TaskRecord>, StoreError>` and `DatabaseStore::append_durable_event(event_type, payload_json, created_at, correlation_json, idempotency_key) -> Result<AuditEvent, StoreError>`. Shared fixtures pin the task read projection and the exact event JSON/hash. Electron tests create schema-13 databases through `applyMigrations` and verify TypeScript repository projections; Rust reads/writes the same fixtures in isolated schema-13 databases and verifies matching projections. Write operations are not exposed through IPC, so there is no shared live database or concurrent writer. Never open both writers against the same database in parallel.
 
 - [x] Add failing parity tests with a fixed timestamp/payload, including idempotent replay and injected failure rollback.
 - [x] Confirm the parity assertions fail before Rust persistence is implemented.

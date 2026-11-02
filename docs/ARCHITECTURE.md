@@ -42,9 +42,9 @@ validation, and payload validation remain required boundaries.
 The Rust migration remains incremental. The current Electron application owns
 its database through the TypeScript backend. Rust validates existing schema
 version 13 databases and provides isolated transaction, WAL, backup, and
-durable-event parity primitives, but Electron has not transferred a production
-write responsibility to Rust. No application path may let both backends write
-the same authoritative responsibility. See
+task-read/durable-event parity primitives, but Electron has not transferred a
+production write responsibility to Rust. No application path may let both
+backends write the same authoritative responsibility. See
 [`persistence/rust-sqlite-cutover.md`](persistence/rust-sqlite-cutover.md).
 
 ## Durable state

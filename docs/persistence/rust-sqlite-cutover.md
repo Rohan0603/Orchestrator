@@ -36,6 +36,11 @@ event primitive writes the append-order audit hash and outbox row in one such
 transaction; a fixed fixture shared with the TypeScript baseline pins its JSON,
 idempotency key, and expected SHA-256 hash.
 
+`DatabaseStore::list_tasks` reads the schema-13 task projection in the same
+`created_at DESC` order as the TypeScript `TaskRepository.list()` baseline. A
+shared task fixture pins task identity, content, acceptance criteria, risk,
+status, and timestamp for the isolated read parity tests.
+
 `DatabaseStore::backup_into` reserves a destination with create-new semantics,
 then uses SQLite's online backup API. It never replaces an existing target and
 removes its own incomplete target and sidecars after a failed copy. The restored

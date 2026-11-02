@@ -244,6 +244,48 @@ test("TypeScript durable-event implementation matches the Rust golden fixture", 
   });
 });
 
+test("TypeScript task repository matches the Rust golden read projection", () => {
+  const fixture = JSON.parse(readFileSync(
+    join(process.cwd(), "tests/fixtures/persistence/task-read-v1.json"),
+    "utf8"
+  )) as {
+    id: string;
+    title: string;
+    description: string;
+    acceptanceCriteria: string[];
+    riskTier: 1 | 2 | 3;
+    status: "intake" | "planned" | "blocked" | "completed";
+    createdAt: string;
+  };
+  withDatabase((database) => {
+    database.prepare(
+      `INSERT INTO tasks
+        (id, project_id, parent_task_id, title, description, acceptance_criteria,
+         risk_tier, status, assigned_worker_id, skill_ids, mcp_server_ids, plugin_ids,
+         token_budget, created_at)
+       VALUES (?, NULL, NULL, ?, ?, ?, ?, ?, NULL, '[]', '[]', '[]', NULL, ?)`
+    ).run(
+      fixture.id,
+      fixture.title,
+      fixture.description,
+      JSON.stringify(fixture.acceptanceCriteria),
+      fixture.riskTier,
+      fixture.status,
+      fixture.createdAt
+    );
+    const task = new TaskRepository(database).list()[0];
+    assert.deepEqual({
+      id: task.id,
+      title: task.title,
+      description: task.description,
+      acceptanceCriteria: task.acceptanceCriteria,
+      riskTier: task.riskTier,
+      status: task.status,
+      createdAt: task.createdAt
+    }, fixture);
+  });
+});
+
 test("unpublished events survive database restart and rollback as one unit", () => {
   const directory = mkdtempSync(join(tmpdir(), "orchestrator-outbox-restart-"));
   const path = join(directory, "events.db");

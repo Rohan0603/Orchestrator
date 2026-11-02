@@ -27,6 +27,8 @@ pub enum StoreError {
     InvalidEvent,
     #[error("event idempotency key was reused with different content")]
     IdempotencyConflict,
+    #[error("stored task row is malformed")]
+    InvalidTaskRow,
 }
 
 #[derive(Clone, Debug)]
@@ -45,6 +47,17 @@ pub struct AuditEvent {
     pub event_hash: String,
     pub correlation_json: String,
     pub idempotency_key: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TaskRecord {
+    pub id: String,
+    pub title: String,
+    pub description: String,
+    pub acceptance_criteria: Vec<String>,
+    pub risk_tier: u8,
+    pub status: String,
     pub created_at: String,
 }
 
@@ -365,6 +378,46 @@ impl DatabaseStore {
             .map_err(StoreError::Operation)?;
         transaction.commit().map_err(StoreError::Operation)?;
         Ok(event)
+    }
+
+    pub fn list_tasks(&self) -> Result<Vec<TaskRecord>, StoreError> {
+        let mut statement = self
+            .connection
+            .prepare(
+                "SELECT id, title, description, acceptance_criteria, risk_tier, status, created_at FROM tasks ORDER BY created_at DESC",
+            )
+            .map_err(StoreError::Operation)?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, i64>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                ))
+            })
+            .map_err(StoreError::Operation)?;
+        let mut tasks = Vec::new();
+        for row in rows {
+            let (id, title, description, criteria_json, risk_tier, status, created_at) =
+                row.map_err(StoreError::Operation)?;
+            let acceptance_criteria =
+                serde_json::from_str(&criteria_json).map_err(|_| StoreError::InvalidTaskRow)?;
+            let risk_tier = u8::try_from(risk_tier).map_err(|_| StoreError::InvalidTaskRow)?;
+            tasks.push(TaskRecord {
+                id,
+                title,
+                description,
+                acceptance_criteria,
+                risk_tier,
+                status,
+                created_at,
+            });
+        }
+        Ok(tasks)
     }
 }
 
@@ -728,6 +781,50 @@ mod tests {
             "../../tests/fixtures/persistence/durable-event-v1.json"
         ))
         .expect("parse durable-event fixture")
+    }
+
+    #[test]
+    fn task_rows_match_the_typescript_golden_read_projection() {
+        let path = new_path("task-read-parity");
+        create_schema(&path, &[SUPPORTED_SCHEMA_VERSION], false);
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/persistence/task-read-v1.json"
+        ))
+        .expect("parse task-read fixture");
+        let setup = Connection::open(&path).expect("open task fixture");
+        setup.execute(
+            "INSERT INTO tasks(id, title, description, acceptance_criteria, risk_tier, status, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            rusqlite::params![
+                fixture["id"].as_str().unwrap(),
+                fixture["title"].as_str().unwrap(),
+                fixture["description"].as_str().unwrap(),
+                serde_json::to_string(&fixture["acceptanceCriteria"]).unwrap(),
+                fixture["riskTier"].as_i64().unwrap(),
+                fixture["status"].as_str().unwrap(),
+                fixture["createdAt"].as_str().unwrap(),
+            ],
+        ).expect("insert golden task");
+        drop(setup);
+        let store = DatabaseStore::open_existing(&path).expect("supported schema should open");
+        let tasks = store.list_tasks().expect("read task rows");
+        let expected_criteria: Vec<String> =
+            serde_json::from_value(fixture["acceptanceCriteria"].clone()).unwrap();
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].id, fixture["id"].as_str().unwrap());
+        assert_eq!(tasks[0].title, fixture["title"].as_str().unwrap());
+        assert_eq!(
+            tasks[0].description,
+            fixture["description"].as_str().unwrap()
+        );
+        assert_eq!(tasks[0].acceptance_criteria, expected_criteria);
+        assert_eq!(
+            tasks[0].risk_tier,
+            fixture["riskTier"].as_u64().unwrap() as u8
+        );
+        assert_eq!(tasks[0].status, fixture["status"].as_str().unwrap());
+        assert_eq!(tasks[0].created_at, fixture["createdAt"].as_str().unwrap());
+        drop(store);
+        std::fs::remove_file(path).expect("remove fixture");
     }
 
     #[test]

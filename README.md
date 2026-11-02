@@ -30,8 +30,8 @@ remains the behavioral and conformance baseline until each Rust service is
 migrated and qualified. ORC-35 supplies the Rust runtime skeleton and ORC-36
 adds the framed stdio protocol and handshake. ORC-37 adds schema-13 validation,
 explicit WAL/checkpoint and backup primitives, immediate transactions, and a
-golden durable-event parity operation. No application lifecycle writes are
-routed to Rust yet; no completion of the target architecture is implied.
+golden task-read and durable-event parity slice. No application lifecycle writes
+are routed to Rust yet; no completion of the target architecture is implied.
 
 Stage 2 adds source-level policy decisions, risk classification, one-shot
 exact-context approval contracts, and workspace/Git safety contracts. These
