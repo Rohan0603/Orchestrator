@@ -1,9 +1,13 @@
+use orchestrator_core::storage::DatabaseStore;
 use rusqlite::Connection;
 use serde_json::{Value, json};
 use std::fs;
-use std::io::{Read, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc;
+use std::thread;
+use std::time::Duration;
 
 static NEXT_DB: AtomicU64 = AtomicU64::new(0);
 
@@ -89,6 +93,81 @@ fn run_health(database_path: &std::path::Path, enable_wal: bool) -> (Value, Valu
     (welcome, health)
 }
 
+fn spawn_crash_worker(
+    mode: &str,
+    database_path: &std::path::Path,
+    payload: Option<&Value>,
+    marker: &str,
+) -> std::process::Child {
+    let mut command =
+        Command::new(std::env::current_exe().expect("resolve integration test executable"));
+    command
+        .args(["--exact", "crash_worker_entrypoint", "--nocapture"])
+        .env("ORC37_CRASH_WORKER_MODE", mode)
+        .env("ORC37_CRASH_WORKER_DATABASE", database_path);
+    if let Some(payload) = payload {
+        command.env(
+            "ORC37_CRASH_WORKER_PAYLOAD",
+            serde_json::to_string(payload).expect("serialize crash worker task payload"),
+        );
+    }
+    let mut child = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn Rust crash worker");
+    let stdout = child.stdout.take().expect("capture crash worker stdout");
+    let (sender, receiver) = mpsc::channel();
+    let expected_marker = marker.to_owned();
+    thread::spawn(move || {
+        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+            if line == expected_marker {
+                let _ = sender.send(());
+                return;
+            }
+        }
+    });
+    if receiver.recv_timeout(Duration::from_secs(10)).is_err() {
+        let _ = child.kill();
+        let _ = child.wait();
+        panic!("crash worker did not reach {marker}");
+    }
+    child
+}
+
+fn run_task_create(database_path: &std::path::Path, payload: &Value) -> Value {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_orchestrator-core"))
+        .args(["serve", "--database"])
+        .arg(database_path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn Rust core for idempotent replay");
+    let mut stdin = child.stdin.take().expect("take Rust core stdin");
+    let mut stdout = child.stdout.take().expect("take Rust core stdout");
+    write_frame(&mut stdin, &hello());
+    assert_eq!(read_frame(&mut stdout)["kind"], "welcome");
+    write_frame(
+        &mut stdin,
+        &json!({
+            "protocolVersion": 1,
+            "kind": "request",
+            "messageId": "task-create-after-crash",
+            "correlationId": "task-create-after-crash-correlation",
+            "causationId": null,
+            "sender": {"id": "typescript-client", "role": "client"},
+            "method": "tasks.create",
+            "payload": payload
+        }),
+    );
+    let response = read_frame(&mut stdout);
+    drop(stdin);
+    assert!(child.wait().expect("wait for Rust core replay").success());
+    response
+}
+
 fn hello() -> Value {
     json!({
         "protocolVersion": 1,
@@ -103,6 +182,55 @@ fn hello() -> Value {
         "schemaVersion": 1,
         "requiredCapabilities": ["system.health", "capabilities.list"]
     })
+}
+
+#[test]
+fn crash_worker_entrypoint() {
+    let Ok(mode) = std::env::var("ORC37_CRASH_WORKER_MODE") else {
+        return;
+    };
+    let database_path = std::path::PathBuf::from(
+        std::env::var("ORC37_CRASH_WORKER_DATABASE").expect("crash worker database path"),
+    );
+    match mode.as_str() {
+        "before_commit" => {
+            let mut store =
+                DatabaseStore::open_existing(&database_path).expect("open crash worker database");
+            let result: Result<(), _> = store.transaction(|transaction| {
+                transaction.execute(
+                    "INSERT INTO audit_events (id, event_type, payload, previous_hash, event_hash, created_at, correlation_json, idempotency_key) VALUES ('crash-before-commit', 'crash.test', '{}', NULL, 'crash-hash', '2026-11-02T00:00:00.000Z', '{}', NULL)",
+                    [],
+                )?;
+                transaction.execute(
+                    "INSERT INTO outbox (id, event_type, payload, published_at, attempt_count, next_attempt_at, created_at) VALUES ('crash-before-commit', 'crash.test', '{}', NULL, 0, '2026-11-02T00:00:00.000Z', '2026-11-02T00:00:00.000Z')",
+                    [],
+                )?;
+                println!("ORC37_BEFORE_COMMIT_WRITES_READY");
+                std::io::stdout().flush().expect("flush crash marker");
+                loop {
+                    thread::sleep(Duration::from_secs(1));
+                }
+            });
+            panic!("crash worker unexpectedly left its transaction: {result:?}");
+        }
+        "after_commit" => {
+            let payload: Value = serde_json::from_str(
+                &std::env::var("ORC37_CRASH_WORKER_PAYLOAD").expect("crash worker task payload"),
+            )
+            .expect("parse crash worker task payload");
+            let mut store =
+                DatabaseStore::open_existing(&database_path).expect("open crash worker database");
+            store
+                .create_task(&payload)
+                .expect("commit task before suppressing response");
+            println!("ORC37_AFTER_COMMIT_RESPONSE_SUPPRESSED");
+            std::io::stdout().flush().expect("flush crash marker");
+            loop {
+                thread::sleep(Duration::from_secs(1));
+            }
+        }
+        _ => panic!("unsupported crash worker mode: {mode}"),
+    }
 }
 
 #[test]
@@ -260,6 +388,150 @@ fn tasks_create_writes_task_revision_audit_and_outbox_atomically() {
     );
     assert_eq!(connection.query_row("SELECT count(*) FROM audit_events WHERE event_type IN ('task.created','task.revision.created')", [], |row| row.get::<_, u32>(0)).unwrap(), 2);
     assert_eq!(connection.query_row("SELECT count(*) FROM outbox WHERE event_type IN ('task.created','task.revision.created')", [], |row| row.get::<_, u32>(0)).unwrap(), 2);
+    drop(connection);
+    fs::remove_dir_all(directory).expect("remove test directory");
+}
+
+#[test]
+fn process_death_before_commit_rolls_back_audit_and_outbox_intent() {
+    let directory = test_dir();
+    let database_path = directory.join("state.sqlite");
+    create_supported_database(&database_path);
+    DatabaseStore::migrate_existing(&database_path)
+        .unwrap_or_else(|error| panic!("fixture migration failed: {error:?}"));
+
+    let mut child = spawn_crash_worker(
+        "before_commit",
+        &database_path,
+        None,
+        "ORC37_BEFORE_COMMIT_WRITES_READY",
+    );
+    child.kill().expect("kill Rust process before commit");
+    assert!(
+        !child
+            .wait()
+            .expect("wait for killed Rust process")
+            .success()
+    );
+
+    let connection = Connection::open(&database_path).expect("reopen after pre-commit death");
+    assert_eq!(
+        connection
+            .query_row(
+                "SELECT count(*) FROM audit_events WHERE id='crash-before-commit'",
+                [],
+                |row| row.get::<_, u32>(0),
+            )
+            .unwrap(),
+        0,
+        "uncommitted audit event must not survive process death"
+    );
+    assert_eq!(
+        connection
+            .query_row(
+                "SELECT count(*) FROM outbox WHERE id='crash-before-commit'",
+                [],
+                |row| row.get::<_, u32>(0),
+            )
+            .unwrap(),
+        0,
+        "uncommitted outbox intent must not survive process death"
+    );
+    assert_eq!(
+        connection
+            .query_row("PRAGMA integrity_check", [], |row| row.get::<_, String>(0))
+            .unwrap(),
+        "ok"
+    );
+    drop(connection);
+    fs::remove_dir_all(directory).expect("remove test directory");
+}
+
+#[test]
+fn process_death_after_commit_before_response_replays_one_task_and_event_set() {
+    let directory = test_dir();
+    let database_path = directory.join("state.sqlite");
+    create_supported_database(&database_path);
+    DatabaseStore::migrate_existing(&database_path)
+        .unwrap_or_else(|error| panic!("fixture migration failed: {error:?}"));
+    let payload = json!({
+        "title": "Rust crash replay",
+        "description": "Commit before response, then retry after process death.",
+        "acceptanceCriteria": ["task, revision, audit and outbox do not duplicate"],
+        "riskTier": 1,
+        "idempotencyKey": "orc37-crash-replay-1"
+    });
+
+    let mut child = spawn_crash_worker(
+        "after_commit",
+        &database_path,
+        Some(&payload),
+        "ORC37_AFTER_COMMIT_RESPONSE_SUPPRESSED",
+    );
+    child.kill().expect("kill Rust process before response");
+    assert!(
+        !child
+            .wait()
+            .expect("wait for killed Rust process")
+            .success()
+    );
+
+    let retry = run_task_create(&database_path, &payload);
+    assert_eq!(retry["ok"], true, "replay should return the committed task");
+    let task_id = retry["result"]["id"].as_str().expect("task id");
+    assert_eq!(retry["result"]["title"], payload["title"]);
+
+    let connection = Connection::open(&database_path).expect("inspect crash replay database");
+    assert_eq!(
+        connection
+            .query_row("SELECT count(*) FROM tasks WHERE id=?1", [task_id], |row| {
+                row.get::<_, u32>(0)
+            })
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        connection
+            .query_row(
+                "SELECT count(*) FROM task_revisions WHERE task_id=?1",
+                [task_id],
+                |row| row.get::<_, u32>(0)
+            )
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        connection
+            .query_row(
+                "SELECT count(*) FROM task_commands WHERE idempotency_key='orc37-crash-replay-1'",
+                [],
+                |row| row.get::<_, u32>(0)
+            )
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        connection
+            .query_row(
+                "SELECT count(*) FROM audit_events WHERE correlation_json=?1",
+                [format!("{{\"taskId\":\"{task_id}\"}}")],
+                |row| row.get::<_, u32>(0)
+            )
+            .unwrap(),
+        2
+    );
+    assert_eq!(
+        connection
+            .query_row("SELECT count(*) FROM outbox WHERE id IN (SELECT id FROM audit_events WHERE correlation_json=?1)", [format!("{{\"taskId\":\"{task_id}\"}}")], |row| row.get::<_, u32>(0))
+            .unwrap(),
+        2
+    );
+    assert_eq!(
+        connection
+            .query_row("PRAGMA integrity_check", [], |row| row.get::<_, String>(0))
+            .unwrap(),
+        "ok"
+    );
     drop(connection);
     fs::remove_dir_all(directory).expect("remove test directory");
 }
