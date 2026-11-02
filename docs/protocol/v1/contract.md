@@ -49,7 +49,7 @@ The initial method registry is grouped by domain:
 | `projects.list` | `{}` | project array | TypeScript SDK |
 | `tasks.create` | CreateTaskInput | task | Rust atomic adapter; TypeScript SDK conformance baseline |
 | `tasks.update` | `{ taskId, content }` | task | TypeScript SDK |
-| `tasks.get` | `{ taskId }` | task or null | TypeScript SDK |
+| `tasks.get` | `{ taskId }` | task or null | Rust full Task lookup; TypeScript SDK conformance baseline |
 | `tasks.list` | `{}` | task array | Rust full Task projection; TypeScript SDK conformance baseline |
 | `tasks.runs.list` | `{ taskId }` | run/attempt history | TypeScript SDK |
 | `tasks.revisions.list` | `{ taskId }` | revision history | TypeScript SDK |

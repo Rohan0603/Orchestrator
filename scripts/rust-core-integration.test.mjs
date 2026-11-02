@@ -216,16 +216,18 @@ test("Rust core reports versioned protocol and capability metadata", () => {
   assert.ok(metadata.capabilities.some((capability) => capability.name === "capabilities.list" && capability.state === "supported"));
   assert.ok(metadata.capabilities.some((capability) => capability.name === "tasks.create" && capability.state === "supported"));
   assert.ok(metadata.capabilities.some((capability) => capability.name === "tasks.list" && capability.state === "supported"));
+  assert.ok(metadata.capabilities.some((capability) => capability.name === "tasks.get" && capability.state === "supported"));
 });
 
 test("Rust core recognizes tasks.create and fails closed when no authoritative database is configured", async () => {
   const {child, reader} = spawnCore(["serve"]);
   try {
-    child.stdin.write(encodeIpcFrame(hello(["tasks.create", "tasks.list"])));
+    child.stdin.write(encodeIpcFrame(hello(["tasks.create", "tasks.list", "tasks.get"])));
     const welcome = await reader.next();
     assert.equal(welcome.kind, "welcome");
     assert.ok(welcome.capabilities.some((capability) => capability.name === "tasks.create" && capability.state === "supported"));
     assert.ok(welcome.capabilities.some((capability) => capability.name === "tasks.list" && capability.state === "supported"));
+    assert.ok(welcome.capabilities.some((capability) => capability.name === "tasks.get" && capability.state === "supported"));
 
     child.stdin.write(encodeIpcFrame(request("create-without-database", "tasks.create", {
       title: "No database task",
@@ -243,6 +245,12 @@ test("Rust core recognizes tasks.create and fails closed when no authoritative d
     assert.equal(listResponse.kind, "response");
     assert.equal(listResponse.ok, false);
     assert.equal(listResponse.error.code, "DATABASE_UNAVAILABLE");
+
+    child.stdin.write(encodeIpcFrame(request("get-without-database", "tasks.get", {taskId: "missing-task"})));
+    const getResponse = await reader.next();
+    assert.equal(getResponse.kind, "response");
+    assert.equal(getResponse.ok, false);
+    assert.equal(getResponse.error.code, "DATABASE_UNAVAILABLE");
   } finally {
     await stopChild(child);
   }
@@ -331,6 +339,7 @@ test("Rust core negotiates v1 before serving health and capabilities requests", 
       "capabilities.list",
       "system.health",
       "tasks.create",
+      "tasks.get",
       "tasks.list"
     ]);
 
@@ -347,6 +356,7 @@ test("Rust core negotiates v1 before serving health and capabilities requests", 
     assert.equal(capabilities.inReplyTo, "capabilities-1");
     assert.equal(capabilities.ok, true);
     assert.ok(capabilities.result.some((item) => item.name === "tasks.list" && item.state === "supported"));
+    assert.ok(capabilities.result.some((item) => item.name === "tasks.get" && item.state === "supported"));
 
     const goldenTaskListRequest = JSON.parse(readFileSync(
       join(repositoryRoot, "tests/fixtures/protocol/v1/request.tasks.list.json"),
@@ -387,7 +397,7 @@ test("Rust core rejects requests before a compatible hello", async () => {
 test("Rust core rejects incompatible versions and missing mandatory capabilities", async () => {
   for (const invalidHello of [
     {...hello(), minimumProtocol: 2, maximumProtocol: 2},
-    hello(["tasks.get"])
+    hello(["tasks.update"])
   ]) {
     const {child, reader} = spawnCore();
     try {
