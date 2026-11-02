@@ -88,13 +88,25 @@ async function inspectPackagedDatabase(databasePath: string, enableWal: boolean)
     }
   }));
   const created = await createFrame;
+  const listFrame = nextFrame(child);
+  child.stdin.write(frame({
+    protocolVersion: 1,
+    kind: "request",
+    messageId: "package-storage-list-tasks",
+    correlationId: "package-storage-list-correlation",
+    causationId: null,
+    sender: { id: "typescript-client", role: "client" },
+    method: "tasks.list",
+    payload: {}
+  }));
+  const listed = await listFrame;
   child.stdin.end();
   const exitCode = await new Promise<number | null>((resolvePromise, rejectPromise) => {
     child.once("error", rejectPromise);
     child.once("close", (code) => resolvePromise(code));
   });
   assert.equal(exitCode, 0);
-  return { welcome, health, created };
+  return { welcome, health, created, listed };
 }
 
 test("packaged Rust storage validates schema 13 and supports explicitly selected WAL", async () => {
@@ -108,6 +120,8 @@ test("packaged Rust storage validates schema 13 and supports explicitly selected
     assert.equal((normal.welcome as { databaseSchemaVersion: number }).databaseSchemaVersion, 13);
     assert.equal((normal.health as { result: { sqliteVersion: string; journalMode: string } }).result.journalMode, "delete");
     assert.equal(normal.created.ok, true);
+    assert.equal(normal.listed.ok, true);
+    assert.deepEqual(normal.listed.result, [normal.created.result]);
     const normalDatabase = new Database(databasePath, { readonly: true });
     try {
       assert.deepEqual(
@@ -126,6 +140,8 @@ test("packaged Rust storage validates schema 13 and supports explicitly selected
       normalDatabase.close();
     }
     const wal = await inspectPackagedDatabase(databasePath, true);
+    assert.equal(wal.listed.ok, true);
+    assert.ok((wal.listed.result as unknown[]).some((task) => JSON.stringify(task) === JSON.stringify(wal.created.result)));
     const walResult = (wal.health as { result: { sqliteVersion: string; journalMode: string } }).result;
     assert.equal(walResult.journalMode, "wal");
     assert.equal(walResult.sqliteVersion, (normal.health as { result: { sqliteVersion: string } }).result.sqliteVersion);

@@ -1,9 +1,16 @@
 {
   "id": "task-golden-1",
+  "projectId": null,
+  "parentTaskId": null,
   "title": "Golden task",
   "description": "Schema-13 read parity fixture",
   "acceptanceCriteria": ["read task fields", "preserve order"],
   "riskTier": 2,
   "status": "planned",
+  "assignedWorkerId": null,
+  "skillIds": ["skill-golden-1"],
+  "mcpServerIds": ["mcp-golden-1"],
+  "pluginIds": ["plugin-golden-1"],
+  "tokenBudget": 4096,
   "createdAt": "2026-10-30T12:00:00.000Z"
 }

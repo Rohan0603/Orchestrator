@@ -30,6 +30,7 @@ import { GitHubApiClient, GitHubRepository, GitHubSyncService } from "../integra
 import { reconcileUnresolvedOwnership } from "../recovery/reconcile-ownership";
 import { RustCoreClient, RustCoreClientError } from "./rust-core-client";
 import { resolveRustCoreExecutablePath } from "./rust-core-path";
+import { RustTaskReader } from "./rust-task-reader";
 import { RustTaskCreator } from "./rust-task-creator";
 
 let mainWindow: BrowserWindow | undefined;
@@ -39,6 +40,7 @@ let database: Database.Database | undefined;
 let githubRepository: GitHubRepository | undefined;
 let rustCoreClient: RustCoreClient | undefined;
 let rustTaskCreator: RustTaskCreator | undefined;
+let rustTaskReader: RustTaskReader | undefined;
 
 function configuredHelperPath(): string {
   if (app.isPackaged) {
@@ -78,11 +80,11 @@ function registerIpc(): void {
       ? success({ state: "ready", database: "connected" })
       : failure("PERSISTENCE_UNAVAILABLE", "Database is unavailable");
   });
-  ipcMain.handle("tasks:list", (event) => {
+  ipcMain.handle("tasks:list", async (event) => {
     if (!isTrustedSender(event)) return failure("UNTRUSTED_SENDER", "IPC sender rejected");
-    if (!taskRepository) return failure("PERSISTENCE_UNAVAILABLE", "Database is unavailable");
+    if (!rustTaskReader) return failure("PERSISTENCE_UNAVAILABLE", "Rust task service is unavailable");
     try {
-      return success(taskRepository.list());
+      return success(await rustTaskReader.list());
     } catch (error) {
       console.error("Task listing failed", error);
       return failure("PERSISTENCE_ERROR", "Task listing failed");
@@ -486,9 +488,10 @@ app.whenReady().then(async () => {
       platform: process.platform
     }), {
       args: ["serve", "--database", databasePath],
-      requiredCapabilities: ["system.health", "capabilities.list", "tasks.create"]
+      requiredCapabilities: ["system.health", "capabilities.list", "tasks.create", "tasks.list"]
     });
     rustTaskCreator = new RustTaskCreator(rustCoreClient);
+    rustTaskReader = new RustTaskReader(rustCoreClient);
     runRepository.reconcileInterruptedRuns(new Date().toISOString());
     if (runRepository.listUnresolvedOwnership().length > 0) {
       await reconcileUnresolvedOwnership(runRepository, configuredHelperPath());

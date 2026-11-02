@@ -44,7 +44,7 @@ test("TypeScript client negotiates the real Rust process and correlates framed h
     const capabilities = await client.request({...request("real-capabilities-1"), method: "capabilities.list"});
     assert.equal(capabilities.ok, true);
     if (capabilities.ok) {
-      assert.ok(capabilities.result.some((item) => item.name === "tasks.list" && item.state === "unverified"));
+      assert.ok(capabilities.result.some((item) => item.name === "tasks.list" && item.state === "supported"));
     }
   } finally {
     await client.close(1000);

@@ -297,6 +297,40 @@ fn dispatch_request(
             serde_json::to_value(metadata().capabilities).unwrap_or(Value::Array(Vec::new())),
         );
     }
+    if method == "tasks.list" {
+        if payload.as_object().is_none() {
+            return error_response(
+                Some(request),
+                response_sequence,
+                "MALFORMED_PAYLOAD",
+                "Task list payload does not match its v1 contract",
+                None,
+            );
+        }
+        let Some(store) = database.as_deref() else {
+            return error_response(
+                Some(request),
+                response_sequence,
+                "DATABASE_UNAVAILABLE",
+                "Task listing requires the authoritative Rust database connection",
+                None,
+            );
+        };
+        return match store.list_tasks() {
+            Ok(tasks) => success_response(
+                request,
+                response_sequence,
+                serde_json::to_value(tasks).unwrap_or(Value::Array(Vec::new())),
+            ),
+            Err(_) => error_response(
+                Some(request),
+                response_sequence,
+                "DATABASE_READ_FAILED",
+                "Tasks could not be read",
+                None,
+            ),
+        };
+    }
     if method == "tasks.create" {
         let Some(store) = database.as_deref_mut() else {
             return error_response(
@@ -485,7 +519,10 @@ fn valid_id(value: &str) -> bool {
 }
 
 fn is_supported_capability(name: &str) -> bool {
-    matches!(name, "system.health" | "capabilities.list" | "tasks.create")
+    matches!(
+        name,
+        "system.health" | "capabilities.list" | "tasks.create" | "tasks.list"
+    )
 }
 
 async fn read_frame<R>(reader: &mut R) -> Result<Option<Value>, IpcError>
@@ -558,7 +595,7 @@ mod tests {
             methods
         );
         assert!(is_supported_capability("system.health"));
-        assert!(!is_supported_capability("tasks.list"));
+        assert!(is_supported_capability("tasks.list"));
     }
 
     #[test]
@@ -567,7 +604,7 @@ mod tests {
             serde_json::from_str(include_str!("../../tests/fixtures/protocol/v1/hello.json"))
                 .expect("golden hello parses");
         let mut hello = hello;
-        hello["requiredCapabilities"] = serde_json::json!(["tasks.list"]);
+        hello["requiredCapabilities"] = serde_json::json!(["tasks.get"]);
         assert!(build_welcome(&hello, None).is_none());
     }
 

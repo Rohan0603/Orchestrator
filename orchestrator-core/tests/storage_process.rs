@@ -167,6 +167,26 @@ fn tasks_create_writes_task_revision_audit_and_outbox_atomically() {
     let task_id = response["result"]["id"].as_str().expect("task id");
     assert_eq!(response["result"]["title"], "Rust-owned creation");
 
+    write_frame(
+        &mut stdin,
+        &json!({
+            "protocolVersion": 1,
+            "kind": "request",
+            "messageId": "task-list-orc37-1",
+            "correlationId": "task-list-correlation-orc37-1",
+            "causationId": null,
+            "sender": {"id": "typescript-client", "role": "client"},
+            "method": "tasks.list",
+            "payload": {}
+        }),
+    );
+    let list_response = read_frame(&mut stdout);
+    assert_eq!(
+        list_response["ok"], true,
+        "unexpected core response: {list_response}"
+    );
+    assert_eq!(list_response["result"], json!([response["result"].clone()]));
+
     drop(stdin);
     assert!(child.wait().expect("wait for Rust core").success());
     let connection = Connection::open(&database_path).expect("read task database");

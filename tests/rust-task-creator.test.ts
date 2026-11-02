@@ -8,6 +8,7 @@ import { openDatabase } from "../src/persistence/database";
 import { TaskRepository } from "../src/persistence/task-repository";
 import { appendDurableEvent } from "../src/persistence/events";
 import { RustCoreClient } from "../src/main/rust-core-client";
+import { RustTaskReader } from "../src/main/rust-task-reader";
 import { RustTaskCreator } from "../src/main/rust-task-creator";
 
 const coreExecutable = resolve("target/debug/orchestrator-core.exe");
@@ -34,6 +35,7 @@ test("Rust task creator persists one TS-compatible task across retries and never
     const created = await creator.create(input);
     assert.equal(created.title, input.title);
     assert.equal(created.status, "intake");
+    assert.deepEqual(await new RustTaskReader(client).list(), [created]);
 
     const typescriptBaseline = new TaskRepository(database).create(input);
     assert.deepEqual(typescriptBaseline, created, "the old TypeScript writer must recognize the Rust command hash and return the existing row");

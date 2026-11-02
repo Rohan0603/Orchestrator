@@ -30,12 +30,13 @@ remains the behavioral and conformance baseline until each Rust service is
 migrated and qualified. ORC-35 supplies the Rust runtime skeleton and ORC-36
 adds the framed stdio protocol and handshake. ORC-37 adds schema-13 validation,
 explicit WAL/checkpoint and backup primitives, immediate transactions, and a
-golden task-read and durable-event parity slice. The first bounded production
-write, task creation, now routes through Rust for the Electron UI, GitHub issue
-import, and headless CLI; it atomically persists the task, revision,
-idempotency command, audit events, and outbox. Other lifecycle writes and the
-legacy TypeScript SDK remain the conformance baseline until their ordered
-service migrations; this does not complete the target architecture.
+golden task-read and durable-event parity slice. The production Electron task
+list and the first bounded write, task creation, now use Rust. Task creation
+also routes through Rust for GitHub issue import and the headless CLI; Rust
+atomically persists the task, revision, idempotency command, audit events, and
+outbox. Other lifecycle writes and the legacy TypeScript SDK remain the
+conformance baseline until their ordered service migrations; this does not
+complete the target architecture.
 
 Stage 2 adds source-level policy decisions, risk classification, one-shot
 exact-context approval contracts, and workspace/Git safety contracts. These

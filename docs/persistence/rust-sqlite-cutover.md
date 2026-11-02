@@ -67,11 +67,15 @@ rollback. It does not simulate a physically exhausted Windows volume.
    writes the task, revision 1, optional command key, audit facts and outbox
    rows. There is no TypeScript fallback on Rust startup, request, or database
    failure.
-5. Other lifecycle writes remain TypeScript-owned until their ordered issue
+5. Electron `tasks.list` uses the Rust read projection and returns the full
+   frozen v1 Task shape. The direct TypeScript SDK remains the read-conformance
+   baseline. If the core is unavailable, the desktop list operation fails
+   closed instead of querying through a second backend.
+6. Other lifecycle writes remain TypeScript-owned until their ordered issue
    migrations. The legacy direct TypeScript SDK remains a conformance
    baseline; the production desktop and CLI task-create entrypoints do not use
    its `TaskRepository.create` implementation.
-6. To roll back this bounded responsibility, stop the application so Rust has
+7. To roll back these bounded responsibilities, stop the application so Rust has
    closed its connection, then run the previous application revision against
    the same schema-13 database. The TypeScript create implementation recognizes
    an existing command key and the same durable rows. If the backup or parity
@@ -80,13 +84,12 @@ rollback. It does not simulate a physically exhausted Windows volume.
 
 ## Production cutover status
 
-ORC-37 transfers the bounded `tasks.create` responsibility for Electron UI,
-GitHub issue import, and headless CLI. The core advertises the frozen v1 method
-as supported only after implementing its atomic write path. Electron startup
-fails closed if the core executable or required handshake is unavailable, and
-task creation never falls back to TypeScript. The legacy direct SDK remains a
-conformance baseline pending ORC-43; do not use it as an alternate production
-writer during this migration.
+ORC-37 transfers bounded `tasks.create` and Electron `tasks.list` responsibilities.
+The core advertises each frozen v1 method as supported only after implementing
+its behavior. Electron startup fails closed if the core executable or required
+handshake is unavailable; task creation and listing never fall back to
+TypeScript. The legacy direct SDK remains a conformance baseline pending ORC-43;
+do not use it as an alternate production writer during this migration.
 
 The task-create tests prove TypeScript-compatible task command hashing, task
 and revision projections, audit hash chaining, persistent idempotent retry
