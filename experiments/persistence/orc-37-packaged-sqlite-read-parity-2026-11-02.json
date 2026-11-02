@@ -1,0 +1,50 @@
+{
+  "evidenceId": "orc-37-packaged-sqlite-read-parity-2026-11-02",
+  "sourceRevision": "8534b18a361176e9570f96431d00abbdb63f193a",
+  "branch": "codex/orc-37-rust-sqlite-wal",
+  "platform": "Windows x64",
+  "runtime": {
+    "node": "24.22.0",
+    "electron": "44.9.3",
+    "electronNodeModuleAbi": 149,
+    "rustTarget": "x86_64-pc-windows-msvc",
+    "sqliteSourceVersion": "3.54.1"
+  },
+  "package": {
+    "command": "npm run package:win",
+    "directory": "out/Orchestrator-win32-x64",
+    "binary": "resources/orchestrator-core.exe",
+    "buildRevision": "8534b18a3611",
+    "bytes": 3427840,
+    "sha256": "8A49C96E56F830089E15657356F85799292AA0E2D8ECE27F6D40E92DE0780291"
+  },
+  "checks": {
+    "rustFormat": {
+      "command": "node scripts/run-rust-cargo.mjs fmt --all -- --check",
+      "exitCode": 0
+    },
+    "build": {
+      "command": "npm run build",
+      "exitCode": 0
+    },
+    "canonicalTests": {
+      "command": "npm test",
+      "exitCode": 0,
+      "rustUnitTestsPassed": 18,
+      "rustProcessTestsPassed": 1,
+      "rustCoreNodeIntegrationTestsPassed": 10,
+      "electronSuitesPassed": 113,
+      "clientAndRunnerTestsPassed": 15
+    },
+    "packagedStorageSmoke": {
+      "command": "node scripts/run-electron-tests.mjs --expected=1 dist-test/tests/rust-package-storage.test.js",
+      "exitCode": 0,
+      "schemaVersion": 13,
+      "defaultJournalMode": "delete",
+      "explicitWalMode": "wal",
+      "walModePersistedAfterReopenWithoutFlag": true,
+      "sqliteVersionConsistentAcrossModes": true
+    }
+  },
+  "scope": "Disposable Electron-created schema-13 database only. No user database was opened or mutated."
+}
