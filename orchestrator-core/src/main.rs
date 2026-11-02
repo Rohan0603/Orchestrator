@@ -14,6 +14,9 @@ enum Command {
     Metadata,
     Version,
     Help,
+    Migrate {
+        database_path: PathBuf,
+    },
     Serve {
         config_path: Option<PathBuf>,
         database_path: Option<PathBuf>,
@@ -51,9 +54,22 @@ async fn main() -> ExitCode {
         }
         Command::Help => {
             println!(
-                "orchestrator-core [serve [--config <path>] [--database <path> [--enable-wal]] | --metadata | --version | --help]"
+                "orchestrator-core [serve [--config <path>] [--database <path> [--enable-wal]] | migrate --database <path> | --metadata | --version | --help]"
             );
             ExitCode::SUCCESS
+        }
+        Command::Migrate { database_path } => {
+            match DatabaseStore::migrate_existing(&database_path) {
+                Ok(schema_version) => {
+                    println!("{}", json!({"schemaVersion": schema_version}));
+                    ExitCode::SUCCESS
+                }
+                Err(error) => {
+                    let _ = write_json_error("DATABASE_MIGRATION_FAILED");
+                    let _ = error;
+                    ExitCode::from(1)
+                }
+            }
         }
         Command::Serve {
             config_path,
@@ -141,6 +157,14 @@ fn parse_command(args: impl Iterator<Item = String>) -> Result<Command, CoreErro
     }
     if args == ["--help"] || args == ["-h"] {
         return Ok(Command::Help);
+    }
+    if args.first().is_some_and(|arg| arg == "migrate") {
+        if args.len() == 3 && args[1] == "--database" && !args[2].is_empty() {
+            return Ok(Command::Migrate {
+                database_path: PathBuf::from(&args[2]),
+            });
+        }
+        return Err(CoreError::InvalidArguments);
     }
 
     let mut index = if args.first().is_some_and(|arg| arg == "serve") {

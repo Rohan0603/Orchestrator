@@ -35,6 +35,8 @@ pub enum StoreError {
     InvalidTaskInput,
     #[error("task command idempotency key points to a missing task")]
     MissingTaskCommand,
+    #[error("database migration failed")]
+    Migration,
 }
 
 #[derive(Clone, Debug)]
@@ -131,6 +133,97 @@ pub struct DatabaseStore {
 }
 
 impl DatabaseStore {
+    pub fn migrate_existing(path: &Path) -> Result<u32, StoreError> {
+        let mut connection = Connection::open_with_flags(
+            path,
+            OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE,
+        )
+        .map_err(StoreError::Open)?;
+        connection
+            .busy_timeout(Duration::from_millis(250))
+            .map_err(StoreError::Open)?;
+        connection
+            .pragma_update(None, "foreign_keys", "ON")
+            .map_err(StoreError::Open)?;
+
+        let migrations: Vec<String> =
+            serde_json::from_str(include_str!("../../src/persistence/migrations.json"))
+                .map_err(|_| StoreError::Migration)?;
+        if migrations.len() != SUPPORTED_SCHEMA_VERSION as usize {
+            return Err(StoreError::Migration);
+        }
+
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(StoreError::Operation)?;
+        let is_fresh_database = !table_exists(&transaction, "schema_version")?;
+        if is_fresh_database {
+            let existing_tables: u32 = transaction
+                .query_row(
+                    "SELECT count(*) FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+                    [],
+                    |row| row.get(0),
+                )
+                .map_err(StoreError::Validation)?;
+            if existing_tables != 0 {
+                return Err(StoreError::Incompatible(
+                    "schema version table is missing from a nonempty database",
+                ));
+            }
+            transaction
+                .execute_batch("CREATE TABLE schema_version (version INTEGER NOT NULL);")
+                .map_err(StoreError::Operation)?;
+        }
+        let (version_count, version): (i64, Option<i64>) = transaction
+            .query_row(
+                "SELECT count(*), min(version) FROM schema_version",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .map_err(StoreError::Validation)?;
+        if version_count != 1 && !is_fresh_database {
+            return Err(StoreError::Incompatible(
+                "schema version must have exactly one row",
+            ));
+        }
+        let current_version = version.unwrap_or(0);
+        if current_version == 0 && !is_fresh_database {
+            return Err(StoreError::Incompatible("schema version is unsupported"));
+        }
+        if current_version < 0 || current_version > i64::from(SUPPORTED_SCHEMA_VERSION) {
+            return Err(StoreError::Incompatible("schema version is unsupported"));
+        }
+
+        for index in current_version as usize..migrations.len() {
+            transaction
+                .execute_batch(&migrations[index])
+                .map_err(StoreError::Operation)?;
+            let next_version = (index + 1) as i64;
+            if current_version == 0 && index == 0 {
+                transaction
+                    .execute(
+                        "INSERT INTO schema_version(version) VALUES (?1)",
+                        [next_version],
+                    )
+                    .map_err(StoreError::Operation)?;
+            } else {
+                let changed = transaction
+                    .execute("UPDATE schema_version SET version=?1", [next_version])
+                    .map_err(StoreError::Operation)?;
+                if changed != 1 {
+                    return Err(StoreError::Incompatible(
+                        "schema version row changed during migration",
+                    ));
+                }
+            }
+        }
+        if current_version < i64::from(SUPPORTED_SCHEMA_VERSION) {
+            backfill_task_revisions(&transaction)?;
+        }
+        transaction.commit().map_err(StoreError::Operation)?;
+        Ok(SUPPORTED_SCHEMA_VERSION)
+    }
+
     pub fn open_existing(path: &Path) -> Result<Self, StoreError> {
         let connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_WRITE)
             .map_err(StoreError::Open)?;
@@ -990,10 +1083,105 @@ fn column_exists(connection: &Connection, table: &str, column: &str) -> Result<b
         .map_err(StoreError::Validation)
 }
 
+fn backfill_task_revisions(transaction: &Transaction<'_>) -> Result<(), StoreError> {
+    let rows = {
+        let mut statement = transaction
+            .prepare(
+                "SELECT id, project_id, parent_task_id, title, description, acceptance_criteria,
+                        risk_tier, skill_ids, mcp_server_ids, plugin_ids, token_budget, created_at
+                 FROM tasks t
+                 WHERE NOT EXISTS (SELECT 1 FROM task_revisions r WHERE r.task_id=t.id)
+                 ORDER BY created_at, id",
+            )
+            .map_err(StoreError::Operation)?;
+        let mapped = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, u8>(6)?,
+                    row.get::<_, String>(7)?,
+                    row.get::<_, String>(8)?,
+                    row.get::<_, String>(9)?,
+                    row.get::<_, Option<i64>>(10)?,
+                    row.get::<_, String>(11)?,
+                ))
+            })
+            .map_err(StoreError::Operation)?;
+        mapped
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(StoreError::Operation)?
+    };
+
+    for (
+        task_id,
+        project_id,
+        parent_task_id,
+        title,
+        description,
+        acceptance_criteria_json,
+        risk_tier,
+        skill_ids_json,
+        mcp_server_ids_json,
+        plugin_ids_json,
+        token_budget,
+        created_at,
+    ) in rows
+    {
+        let acceptance_criteria: Vec<String> =
+            serde_json::from_str(&acceptance_criteria_json).map_err(|_| StoreError::Migration)?;
+        let skill_ids: Vec<String> =
+            serde_json::from_str(&skill_ids_json).map_err(|_| StoreError::Migration)?;
+        let mcp_server_ids: Vec<String> =
+            serde_json::from_str(&mcp_server_ids_json).map_err(|_| StoreError::Migration)?;
+        let plugin_ids: Vec<String> =
+            serde_json::from_str(&plugin_ids_json).map_err(|_| StoreError::Migration)?;
+        let project_id = project_id.filter(|value| !value.is_empty());
+        let parent_task_id = parent_task_id.filter(|value| !value.is_empty());
+        let snapshot = TaskRevisionSnapshot {
+            task_id: &task_id,
+            project_id: &project_id,
+            parent_task_id: &parent_task_id,
+            title: &title,
+            description: &description,
+            acceptance_criteria: &acceptance_criteria,
+            risk_tier,
+            skill_ids: &skill_ids,
+            mcp_server_ids: &mcp_server_ids,
+            plugin_ids: &plugin_ids,
+            token_budget,
+        };
+        let snapshot_json = serde_json::to_string(&snapshot).map_err(|_| StoreError::Migration)?;
+        let content_hash = Sha256::digest(snapshot_json.as_bytes())
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+        transaction
+            .execute(
+                "INSERT INTO task_revisions(id, task_id, revision, snapshot_json, content_hash, created_at)
+                 VALUES (?1, ?2, 1, ?3, ?4, ?5)",
+                (
+                    uuid::Uuid::new_v4().to_string(),
+                    task_id,
+                    snapshot_json,
+                    content_hash,
+                    created_at,
+                ),
+            )
+            .map_err(StoreError::Operation)?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{DatabaseStore, SUPPORTED_SCHEMA_VERSION, StoreError};
     use rusqlite::Connection;
+    use sha2::{Digest, Sha256};
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{Duration, Instant};
@@ -1029,6 +1217,239 @@ mod tests {
                 .execute("INSERT INTO schema_version(version) VALUES (?1)", [version])
                 .expect("insert schema version");
         }
+    }
+
+    fn create_schema_12(path: &PathBuf, acceptance_criteria: &str) {
+        let connection = Connection::open(path).expect("create schema-12 fixture database");
+        connection
+            .execute_batch(
+                "CREATE TABLE schema_version(version INTEGER NOT NULL);
+             INSERT INTO schema_version(version) VALUES (12);
+             CREATE TABLE tasks(
+                 id TEXT PRIMARY KEY NOT NULL,
+                 project_id TEXT,
+                 parent_task_id TEXT,
+                 title TEXT NOT NULL,
+                 description TEXT NOT NULL,
+                 acceptance_criteria TEXT NOT NULL,
+                 risk_tier INTEGER NOT NULL,
+                 status TEXT NOT NULL,
+                 assigned_worker_id TEXT,
+                 skill_ids TEXT NOT NULL DEFAULT '[]',
+                 mcp_server_ids TEXT NOT NULL DEFAULT '[]',
+                 plugin_ids TEXT NOT NULL DEFAULT '[]',
+                 token_budget INTEGER,
+                 created_at TEXT NOT NULL
+             );",
+            )
+            .expect("create schema-12 tables");
+        connection.execute(
+            "INSERT INTO tasks(id, project_id, parent_task_id, title, description, acceptance_criteria, risk_tier, status, assigned_worker_id, skill_ids, mcp_server_ids, plugin_ids, token_budget, created_at)
+             VALUES ('task-1', NULL, NULL, 'title', 'description', ?1, 1, 'intake', NULL, '[\"skill-a\"]', '[]', '[]', NULL, '2026-11-01T00:00:00.000Z')",
+            [acceptance_criteria],
+        ).expect("insert schema-12 task");
+    }
+
+    #[test]
+    fn migrates_schema_12_and_backfills_deterministic_task_revision() {
+        let path = new_path("migration-v12");
+        create_schema_12(&path, "[\"acceptance\"]");
+
+        let version = DatabaseStore::migrate_existing(&path).expect("migrate schema 12");
+        assert_eq!(version, SUPPORTED_SCHEMA_VERSION);
+        let connection = Connection::open(&path).expect("open migrated schema");
+        let (snapshot, created_at, hash): (String, String, String) = connection
+            .query_row(
+                "SELECT snapshot_json, created_at, content_hash FROM task_revisions WHERE task_id='task-1' AND revision=1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("read backfilled task revision");
+        assert_eq!(
+            snapshot,
+            r#"{"taskId":"task-1","projectId":null,"parentTaskId":null,"title":"title","description":"description","acceptanceCriteria":["acceptance"],"riskTier":1,"skillIds":["skill-a"],"mcpServerIds":[],"pluginIds":[],"tokenBudget":null}"#
+        );
+        assert_eq!(created_at, "2026-11-01T00:00:00.000Z");
+        let expected_hash = Sha256::digest(snapshot.as_bytes())
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+        assert_eq!(hash, expected_hash);
+        drop(connection);
+        assert_eq!(
+            DatabaseStore::migrate_existing(&path).expect("repeat migration is idempotent"),
+            SUPPORTED_SCHEMA_VERSION
+        );
+        std::fs::remove_file(path).expect("remove migrated fixture");
+    }
+
+    #[test]
+    fn malformed_task_json_rolls_back_schema_migration_and_version() {
+        let path = new_path("migration-malformed");
+        create_schema_12(&path, "not-json");
+
+        assert!(DatabaseStore::migrate_existing(&path).is_err());
+        let connection = Connection::open(&path).expect("reopen failed migration fixture");
+        let version: u32 = connection
+            .query_row("SELECT version FROM schema_version", [], |row| row.get(0))
+            .expect("read unchanged schema version");
+        let has_revisions: bool = connection
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type='table' AND name='task_revisions')",
+                [],
+                |row| row.get(0),
+            )
+            .expect("check migration DDL rollback");
+        assert_eq!(version, 12);
+        assert!(!has_revisions);
+        drop(connection);
+        std::fs::remove_file(path).expect("remove malformed fixture");
+    }
+
+    #[test]
+    fn unsupported_future_version_is_rejected_without_schema_changes() {
+        let path = new_path("migration-future");
+        let connection = Connection::open(&path).expect("create future schema fixture");
+        connection
+            .execute_batch(
+                "CREATE TABLE schema_version(version INTEGER NOT NULL);
+                 INSERT INTO schema_version(version) VALUES (14);",
+            )
+            .expect("write unsupported version");
+        drop(connection);
+
+        assert!(DatabaseStore::migrate_existing(&path).is_err());
+        let connection = Connection::open(&path).expect("reopen future schema fixture");
+        let version: u32 = connection
+            .query_row("SELECT version FROM schema_version", [], |row| row.get(0))
+            .expect("read unchanged future version");
+        let table_count: u32 = connection
+            .query_row(
+                "SELECT count(*) FROM sqlite_schema WHERE type='table' AND name <> 'schema_version'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count unapplied migration tables");
+        assert_eq!(version, 14);
+        assert_eq!(table_count, 0);
+        drop(connection);
+        std::fs::remove_file(path).expect("remove future schema fixture");
+    }
+
+    fn assert_invalid_schema_version_table_is_unchanged(has_zero_row: bool) {
+        let label = if has_zero_row {
+            "migration-version-zero"
+        } else {
+            "migration-version-empty"
+        };
+        let path = new_path(label);
+        let connection = Connection::open(&path).expect("create invalid schema-version fixture");
+        connection
+            .execute_batch("CREATE TABLE schema_version(version INTEGER NOT NULL);")
+            .expect("create empty schema-version table");
+        if has_zero_row {
+            connection
+                .execute("INSERT INTO schema_version(version) VALUES (0)", [])
+                .expect("insert explicit version zero");
+        }
+        drop(connection);
+
+        assert!(DatabaseStore::migrate_existing(&path).is_err());
+        let connection = Connection::open(&path).expect("reopen invalid schema-version fixture");
+        let (row_count, version_sum): (u32, Option<i64>) = connection
+            .query_row(
+                "SELECT count(*), sum(version) FROM schema_version",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read unchanged schema version rows");
+        let migration_tables: u32 = connection
+            .query_row(
+                "SELECT count(*) FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name <> 'schema_version'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count unapplied migration tables");
+        assert_eq!(row_count, u32::from(has_zero_row));
+        assert_eq!(version_sum, if has_zero_row { Some(0) } else { None });
+        assert_eq!(migration_tables, 0);
+        drop(connection);
+        std::fs::remove_file(path).expect("remove invalid schema-version fixture");
+    }
+
+    #[test]
+    fn empty_schema_version_table_is_rejected_without_changes() {
+        assert_invalid_schema_version_table_is_unchanged(false);
+    }
+
+    #[test]
+    fn explicit_zero_schema_version_is_rejected_without_changes() {
+        assert_invalid_schema_version_table_is_unchanged(true);
+    }
+
+    #[test]
+    fn missing_schema_version_table_in_nonempty_database_is_rejected() {
+        let path = new_path("migration-missing-version");
+        let connection = Connection::open(&path).expect("create missing-version fixture");
+        connection
+            .execute_batch("CREATE TABLE tasks(id TEXT PRIMARY KEY NOT NULL);")
+            .expect("create existing user table");
+        drop(connection);
+
+        assert!(DatabaseStore::migrate_existing(&path).is_err());
+        let connection = Connection::open(&path).expect("reopen missing-version fixture");
+        let schema_version_exists: bool = connection
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type='table' AND name='schema_version')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let tasks_exists: bool = connection
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type='table' AND name='tasks')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(!schema_version_exists);
+        assert!(tasks_exists);
+        drop(connection);
+        std::fs::remove_file(path).expect("remove missing-version fixture");
+    }
+
+    #[test]
+    fn duplicate_schema_version_rows_are_rejected_without_changes() {
+        let path = new_path("migration-version-duplicate");
+        let connection = Connection::open(&path).expect("create duplicate-version fixture");
+        connection
+            .execute_batch(
+                "CREATE TABLE schema_version(version INTEGER NOT NULL);
+                 INSERT INTO schema_version(version) VALUES (12), (12);",
+            )
+            .expect("insert duplicate versions");
+        drop(connection);
+
+        assert!(DatabaseStore::migrate_existing(&path).is_err());
+        let connection = Connection::open(&path).expect("reopen duplicate-version fixture");
+        let versions: Vec<i64> = connection
+            .prepare("SELECT version FROM schema_version ORDER BY rowid")
+            .expect("prepare version query")
+            .query_map([], |row| row.get(0))
+            .expect("query unchanged versions")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("read unchanged versions");
+        let migration_tables: u32 = connection
+            .query_row(
+                "SELECT count(*) FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name <> 'schema_version'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count unapplied migration tables");
+        assert_eq!(versions, [12, 12]);
+        assert_eq!(migration_tables, 0);
+        drop(connection);
+        std::fs::remove_file(path).expect("remove duplicate-version fixture");
     }
 
     #[test]

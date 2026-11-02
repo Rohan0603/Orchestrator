@@ -219,6 +219,22 @@ test("Rust core reports versioned protocol and capability metadata", () => {
   assert.ok(metadata.capabilities.some((capability) => capability.name === "tasks.get" && capability.state === "supported"));
 });
 
+test("Rust migration CLI creates a fresh schema and is idempotent", () => {
+  const directory = mkdtempSync(join(tmpdir(), "agentconductor-rust-migrate-"));
+  const databasePath = join(directory, "fresh.sqlite");
+  try {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const output = execFileSync(executable, ["migrate", "--database", databasePath], {
+        encoding: "utf8",
+        windowsHide: true
+      });
+      assert.deepEqual(JSON.parse(output), {schemaVersion: 13});
+    }
+  } finally {
+    rmSync(directory, {recursive: true, force: true});
+  }
+});
+
 test("Rust core recognizes tasks.create and fails closed when no authoritative database is configured", async () => {
   const {child, reader} = spawnCore(["serve"]);
   try {
