@@ -197,7 +197,7 @@ export class GitHubSyncService {
     private readonly port: GitHubPort,
     private readonly tasks: {
       create(input: CreateTaskInput): Task | Promise<Task>;
-      get(taskId: string): Task | null;
+      get(taskId: string): Task | null | Promise<Task | null>;
       updateStatus(taskId: string, status: Task["status"]): Task;
     },
     private readonly links: GitHubRepository
@@ -206,7 +206,7 @@ export class GitHubSyncService {
   public async importIssue(repository: string, issue: GitHubIssue, projectId: string | null, projectItemId: string | null): Promise<GitHubSyncResult> {
     const existing = this.links.linkForIssue(repository, issue.number);
     if (existing) {
-      const task = this.tasks.get(existing.taskId);
+      const task = await this.tasks.get(existing.taskId);
       if (!task) throw new Error("Linked Orchestrator task was not found");
       return { task, link: existing, action: "synced" };
     }

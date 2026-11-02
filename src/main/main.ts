@@ -118,7 +118,7 @@ function registerIpc(): void {
   });
   ipcMain.handle("github:import-issue", async (event, repository: unknown, projectId: unknown, issueNumber: unknown) => {
     if (!isTrustedSender(event)) return failure("UNTRUSTED_SENDER", "IPC sender rejected");
-    if (!taskRepository || !githubRepository || !rustTaskCreator || !process.env.ORCHESTRATOR_GITHUB_TOKEN) {
+    if (!taskRepository || !githubRepository || !rustTaskCreator || !rustTaskReader || !process.env.ORCHESTRATOR_GITHUB_TOKEN) {
       return failure("GITHUB_NOT_CONFIGURED", "GitHub token is not configured");
     }
     if (typeof repository !== "string" || !/^[^/]+\/[^/]+$/.test(repository) ||
@@ -133,7 +133,7 @@ function registerIpc(): void {
       if (!item) return failure("GITHUB_NOT_FOUND", "GitHub project issue was not found");
       const service = new GitHubSyncService(client, {
         create: (input) => rustTaskCreator!.create(input),
-        get: (taskId) => taskRepository!.get(taskId),
+        get: (taskId) => rustTaskReader!.get(taskId),
         updateStatus: (taskId, status) => taskRepository!.updateStatus(taskId, status)
       }, githubRepository);
       return success(await service.importIssue(repository, item.issue, projectId, item.id));
@@ -144,14 +144,14 @@ function registerIpc(): void {
   });
   ipcMain.handle("github:sync-task", async (event, taskId: unknown, progress: unknown) => {
     if (!isTrustedSender(event)) return failure("UNTRUSTED_SENDER", "IPC sender rejected");
-    if (!taskRepository || !githubRepository || !rustTaskCreator || !process.env.ORCHESTRATOR_GITHUB_TOKEN) {
+    if (!taskRepository || !githubRepository || !rustTaskCreator || !rustTaskReader || !process.env.ORCHESTRATOR_GITHUB_TOKEN) {
       return failure("GITHUB_NOT_CONFIGURED", "GitHub token is not configured");
     }
     if (typeof taskId !== "string" || taskId.trim().length === 0 ||
         (progress !== null && typeof progress !== "string")) {
       return failure("INVALID_INPUT", "GitHub sync payload is invalid");
     }
-    const task = taskRepository.get(taskId);
+    const task = await rustTaskReader.get(taskId);
     if (!task) return failure("INVALID_INPUT", "Task was not found");
     const link = githubRepository.linkForTask(taskId);
     if (!link) return failure("GITHUB_NOT_LINKED", "Task has no GitHub link");
@@ -160,7 +160,7 @@ function registerIpc(): void {
         new GitHubApiClient(process.env.ORCHESTRATOR_GITHUB_TOKEN ?? ""),
         {
           create: (input) => rustTaskCreator!.create(input),
-          get: (id) => taskRepository!.get(id),
+          get: (id) => rustTaskReader!.get(id),
           updateStatus: (id, status) => taskRepository!.updateStatus(id, status)
         },
         githubRepository

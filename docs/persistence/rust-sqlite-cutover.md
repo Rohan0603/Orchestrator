@@ -73,10 +73,10 @@ rollback. It does not simulate a physically exhausted Windows volume.
    frozen v1 Task shape. The direct TypeScript SDK remains the read-conformance
    baseline. If the core is unavailable, the desktop list operation fails
    closed instead of querying through a second backend.
-6. Both Electron fixture execution entrypoints use Rust `tasks.get` for the
-   full v1 Task projection; missing IDs return `null`, and startup requires the
-   capability before either entrypoint can run. The legacy direct TypeScript
-   SDK remains the conformance baseline.
+6. Electron fixture execution and GitHub import/sync entrypoints use Rust
+   `tasks.get` for the full v1 Task projection; missing IDs return `null`, and
+   startup requires the capability before those entrypoints can run. The
+   legacy direct TypeScript SDK remains the conformance baseline.
 7. Other lifecycle writes remain TypeScript-owned until their ordered issue
    migrations. The legacy direct TypeScript SDK remains a conformance
    baseline; the production desktop and CLI task-create entrypoints do not use
@@ -90,20 +90,22 @@ rollback. It does not simulate a physically exhausted Windows volume.
 
 ## Production cutover status
 
-ORC-37 transfers bounded `tasks.create`, Electron `tasks.list`, and fixture-path
-`tasks.get` responsibilities.
+ORC-37 transfers bounded `tasks.create`, Electron `tasks.list`, and Electron
+fixture/GitHub `tasks.get` responsibilities.
 The core advertises each frozen v1 method as supported only after implementing
 its behavior. Electron startup fails closed if the core executable or required
-handshake is unavailable; task creation, listing, and fixture task lookup never
-fall back to TypeScript. The legacy direct SDK remains a conformance baseline pending ORC-43;
+handshake is unavailable; task creation, listing, and fixture/GitHub task lookup
+never fall back to TypeScript. The legacy direct SDK remains a conformance
+baseline pending ORC-43;
 do not use it as an alternate production writer during this migration.
 
 The task-create tests prove TypeScript-compatible task command hashing, task
 and revision projections, audit hash chaining, persistent idempotent retry
 after Rust restart, conflict rejection, and full rollback when a later audit
 insert fails. Rust task-reader tests prove exact full-projection reads and
-null-on-missing behavior; the Electron fixture paths use that reader. The next
-service migrations must preserve the same sequence:
+null-on-missing behavior; the Electron fixture and GitHub paths use that reader.
+GitHub status writes remain on the TypeScript lifecycle baseline until their
+ordered migration. The next service migrations must preserve the same sequence:
 define one responsibility, prove parity on separate database copies, qualify
 the restart/failure path, then route it to Rust while disabling the TypeScript
 writer for that responsibility. WAL-default selection, an operator-facing
