@@ -11,12 +11,20 @@ writeFileSync(join(directory, "fixture.html"), "<!doctype html><html><body>owned
 app.setPath("userData", join(directory, "user-data"));
 process.env.ORCHESTRATOR_RENDERER_PATH = join(directory, "fixture.html");
 
+async function waitForWindow(): Promise<BrowserWindow> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const window = BrowserWindow.getAllWindows()[0];
+    if (window) return window;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error("Timed out waiting for the main window");
+}
+
 test("Electron main runs owned fixture through helper and persists cleanup", async () => {
   try {
     await import("../src/main/main");
     await app.whenReady();
-    const window = BrowserWindow.getAllWindows()[0];
-    assert.ok(window, "main window was not created");
+    const window = await waitForWindow();
     await new Promise<void>((resolve) => {
       if (window.webContents.isLoading()) window.webContents.once("did-finish-load", () => resolve());
       else resolve();

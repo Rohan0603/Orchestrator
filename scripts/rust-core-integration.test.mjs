@@ -214,7 +214,30 @@ test("Rust core reports versioned protocol and capability metadata", () => {
   assert.equal(typeof metadata.target, "string");
   assert.ok(metadata.capabilities.some((capability) => capability.name === "system.health" && capability.state === "supported"));
   assert.ok(metadata.capabilities.some((capability) => capability.name === "capabilities.list" && capability.state === "supported"));
-  assert.ok(metadata.capabilities.some((capability) => capability.name === "tasks.create" && capability.state === "unverified"));
+  assert.ok(metadata.capabilities.some((capability) => capability.name === "tasks.create" && capability.state === "supported"));
+});
+
+test("Rust core recognizes tasks.create and fails closed when no authoritative database is configured", async () => {
+  const {child, reader} = spawnCore(["serve"]);
+  try {
+    child.stdin.write(encodeIpcFrame(hello(["tasks.create"])));
+    const welcome = await reader.next();
+    assert.equal(welcome.kind, "welcome");
+    assert.ok(welcome.capabilities.some((capability) => capability.name === "tasks.create" && capability.state === "supported"));
+
+    child.stdin.write(encodeIpcFrame(request("create-without-database", "tasks.create", {
+      title: "No database task",
+      description: "Must fail closed",
+      acceptanceCriteria: ["No state is written"],
+      riskTier: 1
+    })));
+    const response = await reader.next();
+    assert.equal(response.kind, "response");
+    assert.equal(response.ok, false);
+    assert.equal(response.error.code, "DATABASE_UNAVAILABLE");
+  } finally {
+    await stopChild(child);
+  }
 });
 
 test("Rust core becomes ready without touching state and shuts down cleanly on stdin EOF", async () => {
@@ -298,7 +321,8 @@ test("Rust core negotiates v1 before serving health and capabilities requests", 
     assert.equal(welcome.ready, true);
     assert.deepEqual(welcome.capabilities.filter((item) => item.state === "supported").map((item) => item.name).sort(), [
       "capabilities.list",
-      "system.health"
+      "system.health",
+      "tasks.create"
     ]);
 
     child.stdin.write(encodeIpcFrame(request("health-1", "system.health")));

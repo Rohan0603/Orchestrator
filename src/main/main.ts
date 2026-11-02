@@ -28,12 +28,17 @@ import {
 } from "../harness/adapter-contract";
 import { GitHubApiClient, GitHubRepository, GitHubSyncService } from "../integrations/github";
 import { reconcileUnresolvedOwnership } from "../recovery/reconcile-ownership";
+import { RustCoreClient, RustCoreClientError } from "./rust-core-client";
+import { resolveRustCoreExecutablePath } from "./rust-core-path";
+import { RustTaskCreator } from "./rust-task-creator";
 
 let mainWindow: BrowserWindow | undefined;
 let taskRepository: TaskRepository | undefined;
 let runRepository: RunRepository | undefined;
 let database: Database.Database | undefined;
 let githubRepository: GitHubRepository | undefined;
+let rustCoreClient: RustCoreClient | undefined;
+let rustTaskCreator: RustTaskCreator | undefined;
 
 function configuredHelperPath(): string {
   if (app.isPackaged) {
@@ -96,22 +101,22 @@ function registerIpc(): void {
       return failure("PERSISTENCE_ERROR", "Run history listing failed");
     }
   });
-  ipcMain.handle("tasks:create", (event, payload: unknown) => {
+  ipcMain.handle("tasks:create", async (event, payload: unknown) => {
     if (!isTrustedSender(event)) return failure("UNTRUSTED_SENDER", "IPC sender rejected");
-    if (!taskRepository) return failure("PERSISTENCE_UNAVAILABLE", "Database is unavailable");
+    if (!rustTaskCreator) return failure("PERSISTENCE_UNAVAILABLE", "Rust task service is unavailable");
     try {
-      return success(taskRepository.create(parseCreateTaskInput(payload)));
+      return success(await rustTaskCreator.create(parseCreateTaskInput(payload)));
     } catch (error) {
       console.error("Task creation failed", error);
       return failure(
-        error instanceof PersistenceError ? "PERSISTENCE_ERROR" : "INVALID_INPUT",
+        error instanceof PersistenceError || error instanceof RustCoreClientError ? "PERSISTENCE_ERROR" : "INVALID_INPUT",
         error instanceof Error ? error.message : "Task creation failed"
       );
     }
   });
   ipcMain.handle("github:import-issue", async (event, repository: unknown, projectId: unknown, issueNumber: unknown) => {
     if (!isTrustedSender(event)) return failure("UNTRUSTED_SENDER", "IPC sender rejected");
-    if (!taskRepository || !githubRepository || !process.env.ORCHESTRATOR_GITHUB_TOKEN) {
+    if (!taskRepository || !githubRepository || !rustTaskCreator || !process.env.ORCHESTRATOR_GITHUB_TOKEN) {
       return failure("GITHUB_NOT_CONFIGURED", "GitHub token is not configured");
     }
     if (typeof repository !== "string" || !/^[^/]+\/[^/]+$/.test(repository) ||
@@ -124,7 +129,11 @@ function registerIpc(): void {
       const items = await client.listProjectItems(projectId);
       const item = items.find((candidate) => candidate.issue.number === issueNumber);
       if (!item) return failure("GITHUB_NOT_FOUND", "GitHub project issue was not found");
-      const service = new GitHubSyncService(client, taskRepository, githubRepository);
+      const service = new GitHubSyncService(client, {
+        create: (input) => rustTaskCreator!.create(input),
+        get: (taskId) => taskRepository!.get(taskId),
+        updateStatus: (taskId, status) => taskRepository!.updateStatus(taskId, status)
+      }, githubRepository);
       return success(await service.importIssue(repository, item.issue, projectId, item.id));
     } catch (error) {
       console.error("GitHub issue import failed", error);
@@ -133,7 +142,7 @@ function registerIpc(): void {
   });
   ipcMain.handle("github:sync-task", async (event, taskId: unknown, progress: unknown) => {
     if (!isTrustedSender(event)) return failure("UNTRUSTED_SENDER", "IPC sender rejected");
-    if (!taskRepository || !githubRepository || !process.env.ORCHESTRATOR_GITHUB_TOKEN) {
+    if (!taskRepository || !githubRepository || !rustTaskCreator || !process.env.ORCHESTRATOR_GITHUB_TOKEN) {
       return failure("GITHUB_NOT_CONFIGURED", "GitHub token is not configured");
     }
     if (typeof taskId !== "string" || taskId.trim().length === 0 ||
@@ -147,7 +156,11 @@ function registerIpc(): void {
     try {
       const service = new GitHubSyncService(
         new GitHubApiClient(process.env.ORCHESTRATOR_GITHUB_TOKEN ?? ""),
-        taskRepository,
+        {
+          create: (input) => rustTaskCreator!.create(input),
+          get: (id) => taskRepository!.get(id),
+          updateStatus: (id, status) => taskRepository!.updateStatus(id, status)
+        },
         githubRepository
       );
       return success(await service.syncTask(task, progress as string | null));
@@ -461,10 +474,21 @@ function createWindow(): BrowserWindow {
 
 app.whenReady().then(async () => {
   try {
-    database = openDatabase(path.join(app.getPath("userData"), "orchestrator.db"));
+    const databasePath = path.join(app.getPath("userData"), "orchestrator.db");
+    database = openDatabase(databasePath);
     taskRepository = new TaskRepository(database);
     runRepository = new RunRepository(database);
     githubRepository = new GitHubRepository(database);
+    rustCoreClient = await RustCoreClient.start(resolveRustCoreExecutablePath({
+      isPackaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+      appPath: app.getAppPath(),
+      platform: process.platform
+    }), {
+      args: ["serve", "--database", databasePath],
+      requiredCapabilities: ["system.health", "capabilities.list", "tasks.create"]
+    });
+    rustTaskCreator = new RustTaskCreator(rustCoreClient);
     runRepository.reconcileInterruptedRuns(new Date().toISOString());
     if (runRepository.listUnresolvedOwnership().length > 0) {
       await reconcileUnresolvedOwnership(runRepository, configuredHelperPath());
@@ -485,8 +509,26 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
-app.on("before-quit", () => {
-  database?.close();
+let shutdownStarted = false;
+app.on("before-quit", (event) => {
+  if (shutdownStarted) {
+    database?.close();
+    database = undefined;
+    return;
+  }
+  event.preventDefault();
+  shutdownStarted = true;
+  void (async () => {
+    try {
+      await rustCoreClient?.close();
+    } catch (error) {
+      console.error("Rust core shutdown failed", error);
+    } finally {
+      database?.close();
+      database = undefined;
+      app.quit();
+    }
+  })();
 });
 
 export type { OrchestratorApi };

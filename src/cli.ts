@@ -1,8 +1,13 @@
 import { createHash } from "node:crypto";
+import { app } from "electron";
+import path from "node:path";
 import type Database from "better-sqlite3";
 import { openDatabase } from "./persistence/database";
 import { createOrchestratorSdk } from "./sdk";
 import type { OrchestratorSdk } from "./sdk/contracts";
+import { RustCoreClient } from "./main/rust-core-client";
+import { resolveRustCoreExecutablePath } from "./main/rust-core-path";
+import { RustTaskCreator } from "./main/rust-task-creator";
 
 export interface CliIO {
   readonly stdout: (value: string) => void;
@@ -91,7 +96,13 @@ function taskDetails(database: Database.Database, sdk: OrchestratorSdk, taskId: 
   };
 }
 
-async function execute(database: Database.Database, sdk: OrchestratorSdk, args: readonly string[], io: CliIO): Promise<void> {
+async function execute(
+  database: Database.Database,
+  sdk: OrchestratorSdk,
+  taskCreator: RustTaskCreator,
+  args: readonly string[],
+  io: CliIO
+): Promise<void> {
   const [area, action, ...rest] = args;
   if (area === "project" && action === "list" && rest.length === 0) {
     json(io, sdk.listProjects());
@@ -126,7 +137,7 @@ async function execute(database: Database.Database, sdk: OrchestratorSdk, args: 
     const criteria = required(flags, "criteria").split("|").map((criterion) => criterion.trim()).filter(Boolean);
     const riskTier = Number(required(flags, "risk-tier"));
     if (!Number.isInteger(riskTier) || riskTier < 1 || riskTier > 3) throw new Error("--risk-tier must be 1, 2, or 3");
-    json(io, sdk.createTask({
+    json(io, await taskCreator.create({
       projectId: required(flags, "project"),
       title: required(flags, "title"),
       description: flags.description ?? "",
@@ -164,7 +175,7 @@ async function execute(database: Database.Database, sdk: OrchestratorSdk, args: 
       LIMIT 1`).get();
     if (dispatchable) throw new Error("Fixture demo requires a database with no dispatchable tasks; use a fresh temporary database.");
     const project = sdk.createProject({name: "Orchestrator demo fixture", description: "Disposable, labelled CLI acceptance fixture."});
-    const task = sdk.createTask({projectId: project.id, title: "Fixture worker trace", description: "Exercise persisted assignment, progress, artifact and report records.", acceptanceCriteria: ["fixture trace is persisted"], riskTier: 1});
+    const task = await taskCreator.create({projectId: project.id, title: "Fixture worker trace", description: "Exercise persisted assignment, progress, artifact and report records.", acceptanceCriteria: ["fixture trace is persisted"], riskTier: 1});
     const worker = sdk.registerWorker({name: "local-demo-fixture-worker"});
     const assignment = sdk.claimTask(worker.id);
     if (!assignment) throw new Error("Fixture task was not assigned");
@@ -204,6 +215,7 @@ async function execute(database: Database.Database, sdk: OrchestratorSdk, args: 
 
 export async function runCli(args: readonly string[], io: CliIO = defaultIO): Promise<number> {
   let database: Database.Database | undefined;
+  let rustCoreClient: RustCoreClient | undefined;
   try {
     const remaining = [...args];
     let databasePath = process.env.ORCHESTRATOR_DB;
@@ -226,12 +238,22 @@ export async function runCli(args: readonly string[], io: CliIO = defaultIO): Pr
     }
     if (!databasePath?.trim()) throw new Error("Pass --db <path> or set ORCHESTRATOR_DB; database files are not created in the repository by default.");
     database = openDatabase(databasePath);
-    await execute(database, createOrchestratorSdk(database), remaining, io);
+    rustCoreClient = await RustCoreClient.start(resolveRustCoreExecutablePath({
+      isPackaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+      appPath: app.getAppPath(),
+      platform: process.platform
+    }), {
+      args: ["serve", "--database", databasePath],
+      requiredCapabilities: ["system.health", "capabilities.list", "tasks.create"]
+    });
+    await execute(database, createOrchestratorSdk(database), new RustTaskCreator(rustCoreClient), remaining, io);
     return 0;
   } catch (error) {
     io.stderr(`${error instanceof Error ? error.message : String(error)}\n`);
     return 1;
   } finally {
+    await rustCoreClient?.close().catch(() => undefined);
     database?.close();
   }
 }

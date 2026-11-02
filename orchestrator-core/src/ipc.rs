@@ -1,4 +1,4 @@
-use crate::storage::DatabaseInfo;
+use crate::storage::{DatabaseInfo, DatabaseStore, StoreError};
 use crate::{PROTOCOL_VERSION, SCHEMA_VERSION, V1_METHODS, metadata};
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
@@ -62,13 +62,14 @@ struct CachedResponse {
     response: Value,
 }
 
-pub async fn serve_stdio(database: Option<DatabaseInfo>) -> Result<ShutdownReason, IpcError> {
+pub async fn serve_stdio(mut database: Option<DatabaseStore>) -> Result<ShutdownReason, IpcError> {
     let mut stdin = io::stdin();
     let mut stdout = io::stdout();
     let hello = read_frame(&mut stdin)
         .await?
         .ok_or(IpcError::HandshakeRejected)?;
-    let Some((sender_id, sender_role, welcome)) = build_welcome(&hello, database.as_ref()) else {
+    let database_info = database.as_ref().map(DatabaseStore::info);
+    let Some((sender_id, sender_role, welcome)) = build_welcome(&hello, database_info) else {
         return Err(IpcError::HandshakeRejected);
     };
     write_frame(&mut stdout, &welcome).await?;
@@ -123,7 +124,7 @@ pub async fn serve_stdio(database: Option<DatabaseInfo>) -> Result<ShutdownReaso
                     &sender_id,
                     &sender_role,
                     response_sequence,
-                    database.as_ref(),
+                    database.as_mut(),
                 );
                 response_order.push_back(request_id.to_owned());
                 response_cache.insert(
@@ -213,7 +214,7 @@ fn dispatch_request(
     authenticated_sender_id: &str,
     authenticated_sender_role: &str,
     response_sequence: u64,
-    database: Option<&DatabaseInfo>,
+    mut database: Option<&mut DatabaseStore>,
 ) -> Value {
     let Some(envelope) = request.as_object() else {
         return error_response(
@@ -273,14 +274,15 @@ fn dispatch_request(
         );
     }
     let payload = &envelope["payload"];
+    let database_info = database.as_deref().map(DatabaseStore::info);
     if method == "system.health" && payload.as_object().is_some() {
         let result = json!({
             "ready": true,
             "state": "ready",
-            "database": if database.is_some() { "open" } else { "not_open" },
-            "databaseSchemaVersion": database.map_or(0, |info| info.schema_version),
-            "sqliteVersion": database.map(|info| info.sqlite_version.as_str()),
-            "journalMode": database.map(|info| info.journal_mode.as_str()),
+            "database": if database_info.is_some() { "open" } else { "not_open" },
+            "databaseSchemaVersion": database_info.map_or(0, |info| info.schema_version),
+            "sqliteVersion": database_info.map(|info| info.sqlite_version.as_str()),
+            "journalMode": database_info.map(|info| info.journal_mode.as_str()),
             "protocolVersion": PROTOCOL_VERSION,
             "backendVersion": env!("CARGO_PKG_VERSION"),
             "activeRuns": 0,
@@ -294,6 +296,41 @@ fn dispatch_request(
             response_sequence,
             serde_json::to_value(metadata().capabilities).unwrap_or(Value::Array(Vec::new())),
         );
+    }
+    if method == "tasks.create" {
+        let Some(store) = database.as_deref_mut() else {
+            return error_response(
+                Some(request),
+                response_sequence,
+                "DATABASE_UNAVAILABLE",
+                "Task creation requires the authoritative Rust database connection",
+                None,
+            );
+        };
+        return match store.create_task(payload) {
+            Ok(task) => success_response(request, response_sequence, task),
+            Err(StoreError::InvalidTaskInput) => error_response(
+                Some(request),
+                response_sequence,
+                "MALFORMED_PAYLOAD",
+                "Task creation payload does not match its v1 contract",
+                None,
+            ),
+            Err(StoreError::IdempotencyConflict) => error_response(
+                Some(request),
+                response_sequence,
+                "IDEMPOTENCY_CONFLICT",
+                "Task create idempotency key was reused with different content",
+                None,
+            ),
+            Err(_) => error_response(
+                Some(request),
+                response_sequence,
+                "DATABASE_WRITE_FAILED",
+                "Task creation was not committed",
+                None,
+            ),
+        };
     }
     if matches!(method, "system.health" | "capabilities.list") {
         return error_response(
@@ -448,7 +485,7 @@ fn valid_id(value: &str) -> bool {
 }
 
 fn is_supported_capability(name: &str) -> bool {
-    matches!(name, "system.health" | "capabilities.list")
+    matches!(name, "system.health" | "capabilities.list" | "tasks.create")
 }
 
 async fn read_frame<R>(reader: &mut R) -> Result<Option<Value>, IpcError>
