@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
+import Database from "better-sqlite3";
 import { runCli } from "../src/cli";
 
 test("headless CLI runs a labelled SQLite fixture and inspects the same persisted task", async () => {
@@ -13,6 +14,13 @@ test("headless CLI runs a labelled SQLite fixture and inspects the same persiste
   const io = {stdout: (value: string) => stdout.push(value), stderr: (value: string) => stderr.push(value)};
   try {
     assert.equal(await runCli(["--db", databasePath, "fixture", "demo"], io), 0, stderr.join(""));
+    const database = new Database(databasePath, { readonly: true });
+    try {
+      const journalMode = database.pragma("journal_mode", { simple: true });
+      assert.equal(journalMode, "wal");
+    } finally {
+      database.close();
+    }
     const fixture = JSON.parse(stdout.pop() ?? "null") as {
       fixtureLabel: string;
       projectId: string;
