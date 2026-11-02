@@ -39,12 +39,16 @@ operations. Sandboxed renderer code receives only typed preload methods.
 Context isolation, disabled Node integration, restrictive CSP, sender/frame
 validation, and payload validation remain required boundaries.
 
-The Rust migration remains incremental. The current Electron application owns
-its database through the TypeScript backend. Rust validates existing schema
-version 13 databases and provides isolated transaction, WAL, backup, and
-task-read/durable-event parity primitives, but Electron has not transferred a
-production write responsibility to Rust. No application path may let both
-backends write the same authoritative responsibility. See
+The Rust migration remains incremental. Electron initializes the existing
+schema-13 database, then starts one Rust core process on the same path. The
+Electron UI, GitHub-import, and headless CLI task-create paths now route task creation to Rust,
+which owns the atomic task/revision/idempotency/audit/outbox write set. The
+TypeScript task repository does not serve those production entrypoints. Other
+lifecycle writes remain on the TypeScript conformance baseline until their
+ordered migrations. The Rust connection validates the schema and provides
+explicit WAL/checkpoint, backup, transaction, and task-read parity primitives.
+No application path may let both backends write the same authoritative
+responsibility. See
 [`persistence/rust-sqlite-cutover.md`](persistence/rust-sqlite-cutover.md).
 
 ## Durable state

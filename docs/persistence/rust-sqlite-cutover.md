@@ -14,10 +14,12 @@ parity operations, including the event correlation/idempotency fields and
 outbox retry fields.
 
 The Rust process owns one SQLite connection. It enables foreign keys on that
-connection and sets a 250 ms busy timeout. The configured database is rejected
-before protocol readiness when validation fails. The hello reports the
-validated application schema version; `system.health` additionally reports the
-bundled SQLite source version and journal mode.
+connection and sets a 250 ms busy timeout. Electron first opens the current
+database through the TypeScript migration layer, then starts Rust against the
+same path. The configured database is rejected before protocol readiness when
+validation fails. The hello reports the validated application schema version;
+`system.health` additionally reports the bundled SQLite source version and
+journal mode.
 
 WAL is off by default. The explicit `--enable-wal` startup option changes the
 database journal mode only after the existing-file compatibility gate has
@@ -60,34 +62,41 @@ rollback. It does not simulate a physically exhausted Windows volume.
 3. Run the packaged Rust compatibility check against a disposable copy first.
    Confirm schema version 13, bundled SQLite source version, journal mode, and
    integrity checks before selecting any Rust-owned service.
-4. Keep the TypeScript backend as the only application writer until the
-   matching service migration has passed parity and fault qualification.
-5. For a future approved service cutover, stop the application, back up the
-   database, switch that responsibility to Rust, then verify restart and
-   rollback on the disposable copy before using the new owner on user data.
-6. To roll back before any Rust-owned production writes, stop Rust and reopen
-   the unchanged database through the TypeScript backend. If a future Rust
-   owner has written production rows, restore the pre-cutover backup or use an
-   explicitly qualified reverse migration; do not run both writers against
-   the same responsibility.
+4. The first cutover responsibility is `tasks.create`: Electron UI, GitHub
+   issue import, and headless CLI requests go through Rust IPC. Rust atomically
+   writes the task, revision 1, optional command key, audit facts and outbox
+   rows. There is no TypeScript fallback on Rust startup, request, or database
+   failure.
+5. Other lifecycle writes remain TypeScript-owned until their ordered issue
+   migrations. The legacy direct TypeScript SDK remains a conformance
+   baseline; the production desktop and CLI task-create entrypoints do not use
+   its `TaskRepository.create` implementation.
+6. To roll back this bounded responsibility, stop the application so Rust has
+   closed its connection, then run the previous application revision against
+   the same schema-13 database. The TypeScript create implementation recognizes
+   an existing command key and the same durable rows. If the backup or parity
+   check fails, restore the verified pre-cutover backup. Never run both writers
+   for task creation at once.
 
 ## Production cutover status
 
-No Electron application responsibility is transferred by ORC-37. Electron
-continues to create and own the application database through TypeScript. Rust
-can validate an existing database, report metadata, and exercise storage
-primitives in isolated tests, but the Electron shell does not pass its live
-database path to Rust and the v1 IPC registry has no Rust storage-write
-operation. There is therefore no application dual-writer period and no claim
-that lifecycle ownership has cut over. The bounded event operation is a Rust
-storage capability for parity evidence; it is not routed into production.
+ORC-37 transfers the bounded `tasks.create` responsibility for Electron UI,
+GitHub issue import, and headless CLI. The core advertises the frozen v1 method
+as supported only after implementing its atomic write path. Electron startup
+fails closed if the core executable or required handshake is unavailable, and
+task creation never falls back to TypeScript. The legacy direct SDK remains a
+conformance baseline pending ORC-43; do not use it as an alternate production
+writer during this migration.
 
-The next service migrations must preserve that boundary: define one responsibility,
-prove parity on separate database copies, qualify the restart/failure path, and
-only then route it to Rust while disabling the TypeScript writer for that
-responsibility. WAL-default selection, an operator-facing Rust backup flow,
-full lifecycle repositories, abrupt process-death qualification, and release
-cutover remain open gates for the corresponding migration issues.
+The task-create tests prove TypeScript-compatible task command hashing, task
+and revision projections, audit hash chaining, persistent idempotent retry
+after Rust restart, conflict rejection, and full rollback when a later audit
+insert fails. The next service migrations must preserve the same sequence:
+define one responsibility, prove parity on separate database copies, qualify
+the restart/failure path, then route it to Rust while disabling the TypeScript
+writer for that responsibility. WAL-default selection, an operator-facing
+Rust backup flow, the remaining lifecycle repositories, abrupt process-death
+qualification and full release cutover remain open gates.
 
 The Windows x64 packaged compatibility smoke was run with Electron 44.9.3 and
 Node ABI 149. The packaged Rust executable reported bundled SQLite 3.54.1,

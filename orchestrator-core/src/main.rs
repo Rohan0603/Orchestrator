@@ -97,7 +97,6 @@ async fn main() -> ExitCode {
                 },
                 None => None,
             };
-            let database_info = store.as_ref().map(|store| store.info().clone());
             let runtime_metadata = metadata();
             tracing::info!(
                 event = "backend.starting",
@@ -108,7 +107,7 @@ async fn main() -> ExitCode {
                 state = "starting",
                 authoritative_state_mutated = false
             );
-            match ipc::serve_stdio(database_info).await {
+            match ipc::serve_stdio(store).await {
                 Ok(reason) => {
                     log_stopping(reason);
                     ExitCode::SUCCESS

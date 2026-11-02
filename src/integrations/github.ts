@@ -196,7 +196,7 @@ export class GitHubSyncService {
   public constructor(
     private readonly port: GitHubPort,
     private readonly tasks: {
-      create(input: CreateTaskInput): Task;
+      create(input: CreateTaskInput): Task | Promise<Task>;
       get(taskId: string): Task | null;
       updateStatus(taskId: string, status: Task["status"]): Task;
     },
@@ -210,7 +210,7 @@ export class GitHubSyncService {
       if (!task) throw new Error("Linked Orchestrator task was not found");
       return { task, link: existing, action: "synced" };
     }
-    const task = this.tasks.create({
+    const task = await this.tasks.create({
       title: issue.title,
       description: issue.body,
       acceptanceCriteria: ["Complete implementation and verification"],

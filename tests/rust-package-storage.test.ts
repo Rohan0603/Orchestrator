@@ -56,7 +56,7 @@ async function inspectPackagedDatabase(databasePath: string, enableWal: boolean)
     maximumProtocol: 1,
     clientVersion: "0.1.0",
     schemaVersion: 1,
-    requiredCapabilities: ["system.health", "capabilities.list"]
+    requiredCapabilities: ["system.health", "capabilities.list", "tasks.create"]
   }));
   const welcome = await firstFrame;
   const healthFrame = nextFrame(child);
@@ -71,13 +71,30 @@ async function inspectPackagedDatabase(databasePath: string, enableWal: boolean)
     payload: {}
   }));
   const health = await healthFrame;
+  const createFrame = nextFrame(child);
+  child.stdin.write(frame({
+    protocolVersion: 1,
+    kind: "request",
+    messageId: "package-storage-create-task",
+    correlationId: "package-storage-create-correlation",
+    causationId: null,
+    sender: { id: "typescript-client", role: "client" },
+    method: "tasks.create",
+    payload: {
+      title: "Packaged Rust task",
+      description: "Verify task creation through the packaged core",
+      acceptanceCriteria: ["Persist through Rust"],
+      riskTier: 1
+    }
+  }));
+  const created = await createFrame;
   child.stdin.end();
   const exitCode = await new Promise<number | null>((resolvePromise, rejectPromise) => {
     child.once("error", rejectPromise);
     child.once("close", (code) => resolvePromise(code));
   });
   assert.equal(exitCode, 0);
-  return { welcome, health };
+  return { welcome, health, created };
 }
 
 test("packaged Rust storage validates schema 13 and supports explicitly selected WAL", async () => {
@@ -90,6 +107,24 @@ test("packaged Rust storage validates schema 13 and supports explicitly selected
     const normal = await inspectPackagedDatabase(databasePath, false);
     assert.equal((normal.welcome as { databaseSchemaVersion: number }).databaseSchemaVersion, 13);
     assert.equal((normal.health as { result: { sqliteVersion: string; journalMode: string } }).result.journalMode, "delete");
+    assert.equal(normal.created.ok, true);
+    const normalDatabase = new Database(databasePath, { readonly: true });
+    try {
+      assert.deepEqual(
+        normalDatabase.prepare("SELECT COUNT(*) AS count FROM tasks").get(),
+        { count: 1 }
+      );
+      assert.deepEqual(
+        normalDatabase.prepare("SELECT COUNT(*) AS count FROM task_revisions").get(),
+        { count: 1 }
+      );
+      assert.deepEqual(
+        normalDatabase.prepare("SELECT COUNT(*) AS count FROM outbox").get(),
+        { count: 2 }
+      );
+    } finally {
+      normalDatabase.close();
+    }
     const wal = await inspectPackagedDatabase(databasePath, true);
     const walResult = (wal.health as { result: { sqliteVersion: string; journalMode: string } }).result;
     assert.equal(walResult.journalMode, "wal");

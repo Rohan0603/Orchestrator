@@ -1,7 +1,9 @@
 use rusqlite::{
     Connection, OpenFlags, OptionalExtension, Transaction, TransactionBehavior, backup::Backup,
 };
-use sha2::Digest;
+use serde::Serialize;
+use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::fs::OpenOptions;
 use std::path::Path;
 use std::time::Duration;
@@ -29,6 +31,10 @@ pub enum StoreError {
     IdempotencyConflict,
     #[error("stored task row is malformed")]
     InvalidTaskRow,
+    #[error("task creation payload is malformed")]
+    InvalidTaskInput,
+    #[error("task command idempotency key points to a missing task")]
+    MissingTaskCommand,
 }
 
 #[derive(Clone, Debug)]
@@ -59,6 +65,56 @@ pub struct TaskRecord {
     pub risk_tier: u8,
     pub status: String,
     pub created_at: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CreatedTask {
+    id: String,
+    project_id: Option<String>,
+    parent_task_id: Option<String>,
+    title: String,
+    description: String,
+    acceptance_criteria: Vec<String>,
+    risk_tier: u8,
+    status: String,
+    assigned_worker_id: Option<String>,
+    skill_ids: Vec<String>,
+    mcp_server_ids: Vec<String>,
+    plugin_ids: Vec<String>,
+    token_budget: Option<i64>,
+    created_at: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TaskCommandPayload<'a> {
+    project_id: &'a Option<String>,
+    parent_task_id: &'a Option<String>,
+    title: &'a str,
+    description: &'a str,
+    acceptance_criteria: &'a [String],
+    risk_tier: u8,
+    skill_ids: &'a [String],
+    mcp_server_ids: &'a [String],
+    plugin_ids: &'a [String],
+    token_budget: Option<i64>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TaskRevisionSnapshot<'a> {
+    task_id: &'a str,
+    project_id: &'a Option<String>,
+    parent_task_id: &'a Option<String>,
+    title: &'a str,
+    description: &'a str,
+    acceptance_criteria: &'a [String],
+    risk_tier: u8,
+    skill_ids: &'a [String],
+    mcp_server_ids: &'a [String],
+    plugin_ids: &'a [String],
+    token_budget: Option<i64>,
 }
 
 pub struct DatabaseStore {
@@ -380,6 +436,157 @@ impl DatabaseStore {
         Ok(event)
     }
 
+    pub fn create_task(&mut self, payload: &Value) -> Result<Value, StoreError> {
+        let input = parse_task_create(payload)?;
+        let command_payload = TaskCommandPayload {
+            project_id: &input.project_id,
+            parent_task_id: &input.parent_task_id,
+            title: &input.title,
+            description: &input.description,
+            acceptance_criteria: &input.acceptance_criteria,
+            risk_tier: input.risk_tier,
+            skill_ids: &input.skill_ids,
+            mcp_server_ids: &input.mcp_server_ids,
+            plugin_ids: &input.plugin_ids,
+            token_budget: input.token_budget,
+        };
+        let command_payload_json =
+            serde_json::to_vec(&command_payload).map_err(|_| StoreError::InvalidTaskInput)?;
+        let command_payload_hash = hash_hex(&Sha256::digest(command_payload_json));
+
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(StoreError::Operation)?;
+
+        if let Some(idempotency_key) = input.idempotency_key.as_deref() {
+            let existing = transaction
+                .query_row(
+                    "SELECT payload_hash, task_id FROM task_commands WHERE idempotency_key = ?1",
+                    [idempotency_key],
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+                )
+                .optional()
+                .map_err(StoreError::Operation)?;
+            if let Some((previous_hash, task_id)) = existing {
+                if previous_hash != command_payload_hash {
+                    return Err(StoreError::IdempotencyConflict);
+                }
+                let task = read_created_task(&transaction, &task_id)?
+                    .ok_or(StoreError::MissingTaskCommand)?;
+                return serde_json::to_value(task).map_err(|_| StoreError::InvalidTaskRow);
+            }
+        }
+
+        let created_at: String = transaction
+            .query_row("SELECT strftime('%Y-%m-%dT%H:%M:%fZ', 'now')", [], |row| {
+                row.get(0)
+            })
+            .map_err(StoreError::Operation)?;
+        let task = CreatedTask {
+            id: uuid::Uuid::new_v4().to_string(),
+            project_id: input.project_id,
+            parent_task_id: input.parent_task_id,
+            title: input.title,
+            description: input.description,
+            acceptance_criteria: input.acceptance_criteria,
+            risk_tier: input.risk_tier,
+            status: "intake".to_owned(),
+            assigned_worker_id: None,
+            skill_ids: input.skill_ids,
+            mcp_server_ids: input.mcp_server_ids,
+            plugin_ids: input.plugin_ids,
+            token_budget: input.token_budget,
+            created_at,
+        };
+
+        transaction
+            .execute(
+                "INSERT INTO tasks (id, project_id, parent_task_id, title, description, acceptance_criteria, risk_tier, status, assigned_worker_id, skill_ids, mcp_server_ids, plugin_ids, token_budget, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                rusqlite::params![
+                    task.id,
+                    task.project_id,
+                    task.parent_task_id,
+                    task.title,
+                    task.description,
+                    serde_json::to_string(&task.acceptance_criteria).map_err(|_| StoreError::InvalidTaskInput)?,
+                    task.risk_tier,
+                    task.status,
+                    task.assigned_worker_id,
+                    serde_json::to_string(&task.skill_ids).map_err(|_| StoreError::InvalidTaskInput)?,
+                    serde_json::to_string(&task.mcp_server_ids).map_err(|_| StoreError::InvalidTaskInput)?,
+                    serde_json::to_string(&task.plugin_ids).map_err(|_| StoreError::InvalidTaskInput)?,
+                    task.token_budget,
+                    task.created_at,
+                ],
+            )
+            .map_err(StoreError::Operation)?;
+
+        let snapshot = TaskRevisionSnapshot {
+            task_id: &task.id,
+            project_id: &task.project_id,
+            parent_task_id: &task.parent_task_id,
+            title: &task.title,
+            description: &task.description,
+            acceptance_criteria: &task.acceptance_criteria,
+            risk_tier: task.risk_tier,
+            skill_ids: &task.skill_ids,
+            mcp_server_ids: &task.mcp_server_ids,
+            plugin_ids: &task.plugin_ids,
+            token_budget: task.token_budget,
+        };
+        let snapshot_json =
+            serde_json::to_string(&snapshot).map_err(|_| StoreError::InvalidTaskInput)?;
+        let snapshot_hash = hash_hex(&Sha256::digest(snapshot_json.as_bytes()));
+        transaction
+            .execute(
+                "INSERT INTO task_revisions (id, task_id, revision, snapshot_json, content_hash, created_at) VALUES (?1, ?2, 1, ?3, ?4, ?5)",
+                rusqlite::params![uuid::Uuid::new_v4().to_string(), task.id, snapshot_json, snapshot_hash, task.created_at],
+            )
+            .map_err(StoreError::Operation)?;
+
+        if let Some(idempotency_key) = input.idempotency_key.as_deref() {
+            transaction
+                .execute(
+                    "INSERT INTO task_commands (idempotency_key, payload_hash, task_id, created_at) VALUES (?1, ?2, ?3, ?4)",
+                    rusqlite::params![idempotency_key, command_payload_hash, task.id, task.created_at],
+                )
+                .map_err(StoreError::Operation)?;
+        }
+
+        let task_json = serde_json::to_string(&task).map_err(|_| StoreError::InvalidTaskInput)?;
+        append_event_in_transaction(
+            &transaction,
+            "task.created",
+            &task_json,
+            &task.created_at,
+            &format!(
+                "{{\"taskId\":{}}}",
+                serde_json::to_string(&task.id).map_err(|_| StoreError::InvalidTaskInput)?
+            ),
+            Some(&format!("task.created:{}", task.id)),
+        )?;
+        let revision_event_json = format!(
+            "{{\"taskId\":{},\"revision\":1,\"contentHash\":{}}}",
+            serde_json::to_string(&task.id).map_err(|_| StoreError::InvalidTaskInput)?,
+            serde_json::to_string(&snapshot_hash).map_err(|_| StoreError::InvalidTaskInput)?
+        );
+        append_event_in_transaction(
+            &transaction,
+            "task.revision.created",
+            &revision_event_json,
+            &task.created_at,
+            &format!(
+                "{{\"taskId\":{}}}",
+                serde_json::to_string(&task.id).map_err(|_| StoreError::InvalidTaskInput)?
+            ),
+            Some(&format!("task.revision.created:{}:1", task.id)),
+        )?;
+
+        transaction.commit().map_err(StoreError::Operation)?;
+        serde_json::to_value(task).map_err(|_| StoreError::InvalidTaskRow)
+    }
+
     pub fn list_tasks(&self) -> Result<Vec<TaskRecord>, StoreError> {
         let mut statement = self
             .connection
@@ -419,6 +626,230 @@ impl DatabaseStore {
         }
         Ok(tasks)
     }
+}
+
+struct ParsedTaskCreate {
+    project_id: Option<String>,
+    parent_task_id: Option<String>,
+    title: String,
+    description: String,
+    acceptance_criteria: Vec<String>,
+    risk_tier: u8,
+    skill_ids: Vec<String>,
+    mcp_server_ids: Vec<String>,
+    plugin_ids: Vec<String>,
+    token_budget: Option<i64>,
+    idempotency_key: Option<String>,
+}
+
+fn parse_task_create(payload: &Value) -> Result<ParsedTaskCreate, StoreError> {
+    let object = payload.as_object().ok_or(StoreError::InvalidTaskInput)?;
+    let title = object
+        .get("title")
+        .and_then(Value::as_str)
+        .ok_or(StoreError::InvalidTaskInput)?
+        .trim()
+        .to_owned();
+    let description = object
+        .get("description")
+        .and_then(Value::as_str)
+        .ok_or(StoreError::InvalidTaskInput)?
+        .to_owned();
+    let criteria = object
+        .get("acceptanceCriteria")
+        .and_then(Value::as_array)
+        .ok_or(StoreError::InvalidTaskInput)?;
+    let acceptance_criteria = criteria
+        .iter()
+        .map(|item| {
+            item.as_str()
+                .map(|value| value.trim().to_owned())
+                .ok_or(StoreError::InvalidTaskInput)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let risk_tier = object
+        .get("riskTier")
+        .and_then(Value::as_u64)
+        .and_then(|value| u8::try_from(value).ok())
+        .filter(|value| (1..=3).contains(value))
+        .ok_or(StoreError::InvalidTaskInput)?;
+    if title.is_empty()
+        || title.encode_utf16().count() > 200
+        || description.encode_utf16().count() > 10_000
+        || acceptance_criteria.is_empty()
+        || acceptance_criteria.iter().any(String::is_empty)
+    {
+        return Err(StoreError::InvalidTaskInput);
+    }
+
+    let optional_string = |name: &str| {
+        object
+            .get(name)
+            .and_then(Value::as_str)
+            .map(|value| value.trim().to_owned())
+    };
+    let string_array = |name: &str| -> Result<Vec<String>, StoreError> {
+        match object.get(name).and_then(Value::as_array) {
+            Some(values) if values.iter().all(Value::is_string) => Ok(values
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_owned)
+                .collect()),
+            _ => Ok(Vec::new()),
+        }
+    };
+    let idempotency_key = match object.get("idempotencyKey") {
+        Some(value) => {
+            let key = value.as_str().ok_or(StoreError::InvalidTaskInput)?.trim();
+            if !valid_task_idempotency_key(key) {
+                return Err(StoreError::InvalidTaskInput);
+            }
+            Some(key.to_owned())
+        }
+        None => None,
+    };
+
+    Ok(ParsedTaskCreate {
+        project_id: optional_string("projectId"),
+        parent_task_id: optional_string("parentTaskId"),
+        title,
+        description,
+        acceptance_criteria,
+        risk_tier,
+        skill_ids: string_array("skillIds")?,
+        mcp_server_ids: string_array("mcpServerIds")?,
+        plugin_ids: string_array("pluginIds")?,
+        token_budget: object
+            .get("tokenBudget")
+            .and_then(Value::as_i64)
+            .filter(|value| *value > 0),
+        idempotency_key,
+    })
+}
+
+fn valid_task_idempotency_key(value: &str) -> bool {
+    let mut bytes = value.bytes();
+    matches!(bytes.next(), Some(b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9'))
+        && value.len() <= 200
+        && bytes
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b':' | b'-'))
+}
+
+fn hash_hex(hash: &[u8]) -> String {
+    hash.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn read_created_task(
+    connection: &Connection,
+    task_id: &str,
+) -> Result<Option<CreatedTask>, StoreError> {
+    let row = connection
+        .query_row(
+            "SELECT id, project_id, parent_task_id, title, description, acceptance_criteria, risk_tier, status, assigned_worker_id, skill_ids, mcp_server_ids, plugin_ids, token_budget, created_at FROM tasks WHERE id = ?1",
+            [task_id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, i64>(6)?,
+                    row.get::<_, String>(7)?,
+                    row.get::<_, Option<String>>(8)?,
+                    row.get::<_, String>(9)?,
+                    row.get::<_, String>(10)?,
+                    row.get::<_, String>(11)?,
+                    row.get::<_, Option<i64>>(12)?,
+                    row.get::<_, String>(13)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(StoreError::Operation)?;
+    let Some((
+        id,
+        project_id,
+        parent_task_id,
+        title,
+        description,
+        criteria,
+        risk_tier,
+        status,
+        assigned_worker_id,
+        skills,
+        mcps,
+        plugins,
+        token_budget,
+        created_at,
+    )) = row
+    else {
+        return Ok(None);
+    };
+    Ok(Some(CreatedTask {
+        id,
+        project_id,
+        parent_task_id,
+        title,
+        description,
+        acceptance_criteria: serde_json::from_str(&criteria)
+            .map_err(|_| StoreError::InvalidTaskRow)?,
+        risk_tier: u8::try_from(risk_tier).map_err(|_| StoreError::InvalidTaskRow)?,
+        status,
+        assigned_worker_id,
+        skill_ids: serde_json::from_str(&skills).map_err(|_| StoreError::InvalidTaskRow)?,
+        mcp_server_ids: serde_json::from_str(&mcps).map_err(|_| StoreError::InvalidTaskRow)?,
+        plugin_ids: serde_json::from_str(&plugins).map_err(|_| StoreError::InvalidTaskRow)?,
+        token_budget,
+        created_at,
+    }))
+}
+
+fn append_event_in_transaction(
+    transaction: &Transaction<'_>,
+    event_type: &str,
+    payload_json: &str,
+    created_at: &str,
+    correlation_json: &str,
+    idempotency_key: Option<&str>,
+) -> Result<(), StoreError> {
+    let previous_hash = transaction
+        .query_row(
+            "SELECT event_hash FROM audit_events ORDER BY rowid DESC LIMIT 1",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(StoreError::Operation)?;
+    let mut hasher = Sha256::new();
+    hasher.update(previous_hash.as_deref().unwrap_or_default());
+    hasher.update(event_type);
+    hasher.update(payload_json);
+    hasher.update(correlation_json);
+    hasher.update(idempotency_key.unwrap_or_default());
+    hasher.update(created_at);
+    let event_hash = hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    let event_id = uuid::Uuid::new_v4().to_string();
+    transaction
+        .execute(
+            "INSERT INTO audit_events (id, event_type, payload, previous_hash, event_hash, correlation_json, idempotency_key, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            rusqlite::params![event_id, event_type, payload_json, previous_hash, event_hash, correlation_json, idempotency_key, created_at],
+        )
+        .map_err(StoreError::Operation)?;
+    transaction
+        .execute(
+            "INSERT INTO outbox (id, event_type, payload, published_at, attempt_count, next_attempt_at, created_at) VALUES (?1, ?2, ?3, NULL, 0, ?4, ?4)",
+            rusqlite::params![event_id, event_type, payload_json, created_at],
+        )
+        .map_err(StoreError::Operation)?;
+    Ok(())
 }
 
 fn audit_event_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AuditEvent> {

@@ -153,7 +153,10 @@ pub fn metadata() -> RuntimeMetadata {
         capabilities: V1_METHODS
             .iter()
             .map(|name| {
-                if matches!(*name, "system.health" | "capabilities.list") {
+                if matches!(
+                    *name,
+                    "system.health" | "capabilities.list" | "tasks.create"
+                ) {
                     Capability {
                         name,
                         state: "supported",
@@ -176,13 +179,17 @@ mod tests {
     use super::{PROTOCOL_VERSION, RuntimeConfig, metadata};
 
     #[test]
-    fn runtime_metadata_keeps_unimplemented_services_unverified() {
+    fn runtime_metadata_marks_only_implemented_services_supported() {
         let manifest = metadata();
         assert_eq!(manifest.protocol_version, PROTOCOL_VERSION);
         assert!(!manifest.target.is_empty());
-        assert!(manifest.capabilities.iter().any(
-            |capability| capability.name == "tasks.create" && capability.state == "unverified"
-        ));
+        assert!(
+            manifest
+                .capabilities
+                .iter()
+                .any(|capability| capability.name == "tasks.create"
+                    && capability.state == "supported")
+        );
     }
 
     #[test]
