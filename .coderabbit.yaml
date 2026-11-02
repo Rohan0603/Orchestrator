@@ -1,0 +1,31 @@
+language: en-US
+inheritance: true
+tone_instructions: >-
+  Prioritize actionable correctness, security, data integrity, and recovery findings.
+  For architecture-sensitive changes, follow AGENTS.md, README.md, MVP_plan.md,
+  and docs/ARCHITECTURE.md.
+reviews:
+  profile: chill
+  auto_review:
+    enabled: true
+    auto_incremental_review: true
+    drafts: false
+  path_instructions:
+    - path: "src/main/**"
+      instructions: |
+        Treat Electron main as privileged. Check trusted sender/frame validation, payload validation, policy gates, cancellation, and fail-closed error handling. Do not trust renderer or worker claims as authority.
+    - path: "src/preload/**"
+      instructions: |
+        Preserve context isolation and the narrow typed API. Flag Node access, broad IPC exposure, or privileged operations that bypass main-process validation.
+    - path: "src/renderer/**"
+      instructions: |
+        Keep renderer code sandboxed. It must not access SQLite, Node APIs, secrets, or privileged operations directly; route those through the narrow preload API.
+    - path: "src/persistence/**"
+      instructions: |
+        SQLite is authoritative for structured state. Check versioned migrations, transaction boundaries, idempotency, and atomic state-plus-outbox writes. Flag dual writers for the same responsibility or schema changes without migrations.
+    - path: "orchestrator-core/**"
+      instructions: |
+        Rust orchestrator-core is becoming the authoritative backend. Preserve the frozen IPC contract and fail-closed schema/capability checks. Check SQLite integrity, single-writer ownership, durable recovery, sanitized errors, and parity with the TypeScript conformance baseline.
+    - path: "tests/**"
+      instructions: |
+        Prefer deterministic tests with explicit positive, negative, boundary, and recovery cases. Use Electron for SQLite-backed TypeScript tests; fixtures do not establish live-provider or release qualification.
