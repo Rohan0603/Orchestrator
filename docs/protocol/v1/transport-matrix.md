@@ -1,6 +1,6 @@
 # Core IPC v1 transport and fault matrix
 
-This matrix records the behavior exercised by the Rust v1 transport through ORC-37. The core supports health/capability queries and the `tasks.create`/`tasks.list` persistence slice; other registered methods remain `NOT_IMPLEMENTED` until their migration issues deliver them.
+This matrix records the behavior exercised by the Rust v1 transport through ORC-37. The core supports health/capability queries and the `tasks.create`/`tasks.get`/`tasks.list` persistence slice; other registered methods remain `NOT_IMPLEMENTED` until their migration issues deliver them.
 
 ## Compatibility and fault behavior
 

@@ -663,6 +663,74 @@ impl DatabaseStore {
         }
         Ok(tasks)
     }
+
+    pub fn get_task(&self, task_id: &str) -> Result<Option<TaskRecord>, StoreError> {
+        let row = self
+            .connection
+            .query_row(
+                "SELECT id, project_id, parent_task_id, title, description, acceptance_criteria, risk_tier, status, assigned_worker_id, skill_ids, mcp_server_ids, plugin_ids, token_budget, created_at FROM tasks WHERE id = ?1",
+                [task_id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, String>(4)?,
+                        row.get::<_, String>(5)?,
+                        row.get::<_, i64>(6)?,
+                        row.get::<_, String>(7)?,
+                        row.get::<_, Option<String>>(8)?,
+                        row.get::<_, String>(9)?,
+                        row.get::<_, String>(10)?,
+                        row.get::<_, String>(11)?,
+                        row.get::<_, Option<i64>>(12)?,
+                        row.get::<_, String>(13)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(StoreError::Operation)?;
+        let Some((
+            id,
+            project_id,
+            parent_task_id,
+            title,
+            description,
+            criteria_json,
+            risk_tier,
+            status,
+            assigned_worker_id,
+            skill_ids_json,
+            mcp_server_ids_json,
+            plugin_ids_json,
+            token_budget,
+            created_at,
+        )) = row
+        else {
+            return Ok(None);
+        };
+        Ok(Some(TaskRecord {
+            id,
+            project_id,
+            parent_task_id,
+            title,
+            description,
+            acceptance_criteria: serde_json::from_str(&criteria_json)
+                .map_err(|_| StoreError::InvalidTaskRow)?,
+            risk_tier: u8::try_from(risk_tier).map_err(|_| StoreError::InvalidTaskRow)?,
+            status,
+            assigned_worker_id,
+            skill_ids: serde_json::from_str(&skill_ids_json)
+                .map_err(|_| StoreError::InvalidTaskRow)?,
+            mcp_server_ids: serde_json::from_str(&mcp_server_ids_json)
+                .map_err(|_| StoreError::InvalidTaskRow)?,
+            plugin_ids: serde_json::from_str(&plugin_ids_json)
+                .map_err(|_| StoreError::InvalidTaskRow)?,
+            token_budget,
+            created_at,
+        }))
+    }
 }
 
 struct ParsedTaskCreate {

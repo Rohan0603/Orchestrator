@@ -100,13 +100,38 @@ async function inspectPackagedDatabase(databasePath: string, enableWal: boolean)
     payload: {}
   }));
   const listed = await listFrame;
+  const taskId = (created.result as {id: string}).id;
+  const getFrame = nextFrame(child);
+  child.stdin.write(frame({
+    protocolVersion: 1,
+    kind: "request",
+    messageId: "package-storage-get-task",
+    correlationId: "package-storage-get-correlation",
+    causationId: null,
+    sender: { id: "typescript-client", role: "client" },
+    method: "tasks.get",
+    payload: { taskId }
+  }));
+  const fetched = await getFrame;
+  const missingFrame = nextFrame(child);
+  child.stdin.write(frame({
+    protocolVersion: 1,
+    kind: "request",
+    messageId: "package-storage-get-missing",
+    correlationId: "package-storage-get-missing-correlation",
+    causationId: null,
+    sender: { id: "typescript-client", role: "client" },
+    method: "tasks.get",
+    payload: { taskId: "missing-packaged-task" }
+  }));
+  const missing = await missingFrame;
   child.stdin.end();
   const exitCode = await new Promise<number | null>((resolvePromise, rejectPromise) => {
     child.once("error", rejectPromise);
     child.once("close", (code) => resolvePromise(code));
   });
   assert.equal(exitCode, 0);
-  return { welcome, health, created, listed };
+  return { welcome, health, created, listed, fetched, missing };
 }
 
 test("packaged Rust storage validates schema 13 and supports explicitly selected WAL", async () => {
@@ -122,6 +147,10 @@ test("packaged Rust storage validates schema 13 and supports explicitly selected
     assert.equal(normal.created.ok, true);
     assert.equal(normal.listed.ok, true);
     assert.deepEqual(normal.listed.result, [normal.created.result]);
+    assert.equal(normal.fetched.ok, true);
+    assert.deepEqual(normal.fetched.result, normal.created.result);
+    assert.equal(normal.missing.ok, true);
+    assert.equal(normal.missing.result, null);
     const normalDatabase = new Database(databasePath, { readonly: true });
     try {
       assert.deepEqual(
@@ -142,6 +171,8 @@ test("packaged Rust storage validates schema 13 and supports explicitly selected
     const wal = await inspectPackagedDatabase(databasePath, true);
     assert.equal(wal.listed.ok, true);
     assert.ok((wal.listed.result as unknown[]).some((task) => JSON.stringify(task) === JSON.stringify(wal.created.result)));
+    assert.deepEqual(wal.fetched.result, wal.created.result);
+    assert.equal(wal.missing.result, null);
     const walResult = (wal.health as { result: { sqliteVersion: string; journalMode: string } }).result;
     assert.equal(walResult.journalMode, "wal");
     assert.equal(walResult.sqliteVersion, (normal.health as { result: { sqliteVersion: string } }).result.sqliteVersion);

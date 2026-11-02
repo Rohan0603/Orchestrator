@@ -331,6 +331,46 @@ fn dispatch_request(
             ),
         };
     }
+    if method == "tasks.get" {
+        let task_id = payload
+            .as_object()
+            .and_then(|object| object.get("taskId"))
+            .and_then(Value::as_str)
+            .filter(|task_id| valid_id(task_id));
+        let Some(task_id) = task_id else {
+            return error_response(
+                Some(request),
+                response_sequence,
+                "MALFORMED_PAYLOAD",
+                "Task get payload does not match its v1 contract",
+                None,
+            );
+        };
+        let Some(store) = database.as_deref() else {
+            return error_response(
+                Some(request),
+                response_sequence,
+                "DATABASE_UNAVAILABLE",
+                "Task lookup requires the authoritative Rust database connection",
+                None,
+            );
+        };
+        return match store.get_task(task_id) {
+            Ok(Some(task)) => success_response(
+                request,
+                response_sequence,
+                serde_json::to_value(task).unwrap_or(Value::Null),
+            ),
+            Ok(None) => success_response(request, response_sequence, Value::Null),
+            Err(_) => error_response(
+                Some(request),
+                response_sequence,
+                "DATABASE_READ_FAILED",
+                "Task could not be read",
+                None,
+            ),
+        };
+    }
     if method == "tasks.create" {
         let Some(store) = database.as_deref_mut() else {
             return error_response(
@@ -521,7 +561,7 @@ fn valid_id(value: &str) -> bool {
 fn is_supported_capability(name: &str) -> bool {
     matches!(
         name,
-        "system.health" | "capabilities.list" | "tasks.create" | "tasks.list"
+        "system.health" | "capabilities.list" | "tasks.create" | "tasks.list" | "tasks.get"
     )
 }
 
@@ -596,6 +636,7 @@ mod tests {
         );
         assert!(is_supported_capability("system.health"));
         assert!(is_supported_capability("tasks.list"));
+        assert!(is_supported_capability("tasks.get"));
     }
 
     #[test]
@@ -604,7 +645,7 @@ mod tests {
             serde_json::from_str(include_str!("../../tests/fixtures/protocol/v1/hello.json"))
                 .expect("golden hello parses");
         let mut hello = hello;
-        hello["requiredCapabilities"] = serde_json::json!(["tasks.get"]);
+        hello["requiredCapabilities"] = serde_json::json!(["tasks.update"]);
         assert!(build_welcome(&hello, None).is_none());
     }
 

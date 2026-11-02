@@ -187,6 +187,46 @@ fn tasks_create_writes_task_revision_audit_and_outbox_atomically() {
     );
     assert_eq!(list_response["result"], json!([response["result"].clone()]));
 
+    write_frame(
+        &mut stdin,
+        &json!({
+            "protocolVersion": 1,
+            "kind": "request",
+            "messageId": "task-get-orc37-1",
+            "correlationId": "task-get-correlation-orc37-1",
+            "causationId": null,
+            "sender": {"id": "typescript-client", "role": "client"},
+            "method": "tasks.get",
+            "payload": {"taskId": task_id}
+        }),
+    );
+    let get_response = read_frame(&mut stdout);
+    assert_eq!(
+        get_response["ok"], true,
+        "unexpected core response: {get_response}"
+    );
+    assert_eq!(get_response["result"], response["result"]);
+
+    write_frame(
+        &mut stdin,
+        &json!({
+            "protocolVersion": 1,
+            "kind": "request",
+            "messageId": "task-get-missing-orc37-1",
+            "correlationId": "task-get-missing-correlation-orc37-1",
+            "causationId": null,
+            "sender": {"id": "typescript-client", "role": "client"},
+            "method": "tasks.get",
+            "payload": {"taskId": "task-does-not-exist"}
+        }),
+    );
+    let missing_response = read_frame(&mut stdout);
+    assert_eq!(
+        missing_response["ok"], true,
+        "unexpected core response: {missing_response}"
+    );
+    assert_eq!(missing_response["result"], Value::Null);
+
     drop(stdin);
     assert!(child.wait().expect("wait for Rust core").success());
     let connection = Connection::open(&database_path).expect("read task database");

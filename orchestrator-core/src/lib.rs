@@ -155,7 +155,11 @@ pub fn metadata() -> RuntimeMetadata {
             .map(|name| {
                 if matches!(
                     *name,
-                    "system.health" | "capabilities.list" | "tasks.create" | "tasks.list"
+                    "system.health"
+                        | "capabilities.list"
+                        | "tasks.create"
+                        | "tasks.list"
+                        | "tasks.get"
                 ) {
                     Capability {
                         name,
@@ -188,6 +192,13 @@ mod tests {
                 .capabilities
                 .iter()
                 .any(|capability| capability.name == "tasks.create"
+                    && capability.state == "supported")
+        );
+        assert!(
+            manifest
+                .capabilities
+                .iter()
+                .any(|capability| capability.name == "tasks.get"
                     && capability.state == "supported")
         );
         assert!(
