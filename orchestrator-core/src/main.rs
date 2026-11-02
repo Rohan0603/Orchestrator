@@ -1,6 +1,6 @@
 use anyhow::Context;
 use orchestrator_core::ipc::{self, ShutdownReason};
-use orchestrator_core::storage::DatabaseStore;
+use orchestrator_core::storage::{DatabaseStore, StoreError};
 use orchestrator_core::{CoreError, PROTOCOL_VERSION, RuntimeConfig, metadata};
 use serde_json::json;
 use std::env;
@@ -16,6 +16,10 @@ enum Command {
     Help,
     Migrate {
         database_path: PathBuf,
+    },
+    Backup {
+        database_path: PathBuf,
+        destination_path: PathBuf,
     },
     Serve {
         config_path: Option<PathBuf>,
@@ -54,7 +58,7 @@ async fn main() -> ExitCode {
         }
         Command::Help => {
             println!(
-                "orchestrator-core [serve [--config <path>] [--database <path> [--enable-wal]] | migrate --database <path> | --metadata | --version | --help]"
+                "orchestrator-core [serve [--config <path>] [--database <path> [--enable-wal]] | migrate --database <path> | backup --database <path> --destination <new-path> | --metadata | --version | --help]"
             );
             ExitCode::SUCCESS
         }
@@ -71,6 +75,19 @@ async fn main() -> ExitCode {
                 }
             }
         }
+        Command::Backup {
+            database_path,
+            destination_path,
+        } => match backup_database(&database_path, &destination_path) {
+            Ok(schema_version) => {
+                println!("{}", json!({"schemaVersion": schema_version}));
+                ExitCode::SUCCESS
+            }
+            Err(()) => {
+                let _ = write_json_error("DATABASE_BACKUP_FAILED");
+                ExitCode::from(1)
+            }
+        },
         Command::Serve {
             config_path,
             database_path,
@@ -166,6 +183,20 @@ fn parse_command(args: impl Iterator<Item = String>) -> Result<Command, CoreErro
         }
         return Err(CoreError::InvalidArguments);
     }
+    if args.first().is_some_and(|arg| arg == "backup") {
+        if args.len() == 5
+            && args[1] == "--database"
+            && !args[2].is_empty()
+            && args[3] == "--destination"
+            && !args[4].is_empty()
+        {
+            return Ok(Command::Backup {
+                database_path: PathBuf::from(&args[2]),
+                destination_path: PathBuf::from(&args[4]),
+            });
+        }
+        return Err(CoreError::InvalidArguments);
+    }
 
     let mut index = if args.first().is_some_and(|arg| arg == "serve") {
         1
@@ -201,6 +232,38 @@ fn parse_command(args: impl Iterator<Item = String>) -> Result<Command, CoreErro
         })
     } else {
         Err(CoreError::InvalidArguments)
+    }
+}
+
+fn backup_database(
+    database_path: &std::path::Path,
+    destination_path: &std::path::Path,
+) -> Result<u32, ()> {
+    let source = DatabaseStore::open_existing(database_path).map_err(|_| ())?;
+    let schema_version = source.info().schema_version;
+    source.backup_into(destination_path).map_err(|_| ())?;
+
+    let validation = DatabaseStore::open_existing(destination_path).and_then(|backup| {
+        if backup.info().schema_version == schema_version {
+            backup.verify_full_integrity()
+        } else {
+            Err(StoreError::Incompatible("backup schema version changed"))
+        }
+    });
+    if validation.is_ok() {
+        Ok(schema_version)
+    } else {
+        remove_backup_files(destination_path);
+        Err(())
+    }
+}
+
+fn remove_backup_files(path: &std::path::Path) {
+    let _ = std::fs::remove_file(path);
+    for suffix in ["-wal", "-shm"] {
+        let mut sidecar = path.as_os_str().to_os_string();
+        sidecar.push(suffix);
+        let _ = std::fs::remove_file(std::path::PathBuf::from(sidecar));
     }
 }
 

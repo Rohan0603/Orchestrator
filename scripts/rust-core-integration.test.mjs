@@ -235,6 +235,64 @@ test("Rust migration CLI creates a fresh schema and is idempotent", () => {
   }
 });
 
+test("Rust backup CLI creates a compatible snapshot without overwriting destinations", () => {
+  const directory = mkdtempSync(join(tmpdir(), "agentconductor-rust-backup-"));
+  const databasePath = join(directory, "source.sqlite");
+  const backupPath = join(directory, "backup.sqlite");
+  const collisionPath = join(directory, "existing.sqlite");
+  try {
+    execFileSync(executable, ["migrate", "--database", databasePath], {encoding: "utf8", windowsHide: true});
+    const backupOutput = execFileSync(executable, ["backup", "--database", databasePath, "--destination", backupPath], {
+      encoding: "utf8",
+      windowsHide: true
+    });
+    assert.deepEqual(JSON.parse(backupOutput), {schemaVersion: 13});
+    const validationOutput = execFileSync(executable, ["migrate", "--database", backupPath], {
+      encoding: "utf8",
+      windowsHide: true
+    });
+    assert.deepEqual(JSON.parse(validationOutput), {schemaVersion: 13});
+
+    writeFileSync(collisionPath, "preserve this destination");
+    assert.throws(
+      () => execFileSync(executable, ["backup", "--database", databasePath, "--destination", collisionPath], {
+        encoding: "utf8",
+        windowsHide: true
+      }),
+      (error) => {
+        assert.equal(error.status, 1);
+        assert.equal(error.stdout, "");
+        assert.deepEqual(JSON.parse(error.stderr), {
+          level: "ERROR",
+          event: "backend.cli_failed",
+          errorCode: "DATABASE_BACKUP_FAILED"
+        });
+        return true;
+      }
+    );
+    assert.equal(readFileSync(collisionPath, "utf8"), "preserve this destination");
+
+    assert.throws(
+      () => execFileSync(executable, ["backup", "--database", join(directory, "missing.sqlite"), "--destination", join(directory, "failed.sqlite")], {
+        encoding: "utf8",
+        windowsHide: true
+      }),
+      (error) => {
+        assert.equal(error.status, 1);
+        assert.deepEqual(JSON.parse(error.stderr), {
+          level: "ERROR",
+          event: "backend.cli_failed",
+          errorCode: "DATABASE_BACKUP_FAILED"
+        });
+        return true;
+      }
+    );
+    assert.equal(existsSync(join(directory, "failed.sqlite")), false);
+  } finally {
+    rmSync(directory, {recursive: true, force: true});
+  }
+});
+
 test("Rust core recognizes tasks.create and fails closed when no authoritative database is configured", async () => {
   const {child, reader} = spawnCore(["serve"]);
   try {

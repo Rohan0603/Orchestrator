@@ -50,11 +50,14 @@ shared task fixture pins task identity, content, acceptance criteria, risk,
 status, and timestamp for the isolated read parity tests.
 
 `DatabaseStore::backup_into` reserves a destination with create-new semantics,
-then uses SQLite's online backup API. It never replaces an existing target and
-removes its own incomplete target and sidecars after a failed copy. The restored
-copy must pass `PRAGMA integrity_check` and retain the expected schema and
-durable rows. This primitive is not yet exposed as an Electron user or operator
-workflow, so the TypeScript backup path remains the application procedure.
+then uses SQLite's online backup API. The Rust `backup` CLI validates the source,
+creates the copy, reopens and validates the result, and reports the schema
+version only after validation succeeds. It never replaces an existing target
+and attempts to remove its own incomplete target and sidecars after a failed
+copy. If the operating system refuses that cleanup, remove the incomplete
+destination before retrying. The restored copy must pass `PRAGMA integrity_check`
+and retain the expected schema and durable rows. The TypeScript backup path
+remains available for the current application workflow.
 
 The disposable-database disk-full test uses SQLite's `max_page_count` limit to
 force a `SQLITE_FULL`-equivalent write failure and verifies full transaction
@@ -63,8 +66,11 @@ rollback. It does not simulate a physically exhausted Windows volume.
 ## Migration and rollback procedure
 
 1. Stop the Electron application and ensure no process is using its database.
-2. Create and verify a backup through the currently supported TypeScript
-   backup workflow. Retain the source and backup as separate files.
+2. Create a new Rust online backup with
+   `orchestrator-core backup --database <source> --destination <new-path>`.
+   The command refuses an existing destination and validates the completed
+   backup before reporting its schema version. Retain the source and backup as
+   separate files.
 3. On a disposable copy, run the Rust `migrate --database <path>` command and
    then the packaged Rust compatibility check. Confirm schema version 13,
    bundled SQLite source version, journal mode, and integrity checks before
@@ -114,9 +120,15 @@ GitHub status writes remain on the TypeScript lifecycle baseline until their
 ordered migration. The next service migrations must preserve the same sequence:
 define one responsibility, prove parity on separate database copies, qualify
 the restart/failure path, then route it to Rust while disabling the TypeScript
-writer for that responsibility. WAL-default selection, an operator-facing
-Rust backup flow, the remaining lifecycle repositories, abrupt process-death
-qualification and full release cutover remain open gates.
+writer for that responsibility. The Rust process tests now kill a worker with
+an open transaction after its audit/outbox writes and confirm both roll back;
+they also kill a worker after task creation commits but before it reports a
+result, then retry through a fresh Rust Core and confirm one task, revision,
+audit pair, and outbox pair. These deterministic checks cover storage rollback
+and idempotent replay; they do not kill the production IPC server between
+commit and writing its response frame. WAL-default selection, the remaining
+lifecycle repositories, that production IPC crash point, and full release
+cutover remain open gates.
 
 The Windows x64 packaged compatibility smoke was run with Electron 44.9.3 and
 Node ABI 149. The packaged Rust executable reported bundled SQLite 3.54.1,
