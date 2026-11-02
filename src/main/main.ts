@@ -202,13 +202,13 @@ function registerIpc(): void {
   );
   ipcMain.handle("tasks:run-fixture", async (event, taskId: unknown) => {
     if (!isTrustedSender(event)) return failure("UNTRUSTED_SENDER", "IPC sender rejected");
-    if (!taskRepository || !database) {
+    if (!rustTaskReader || !database) {
       return failure("PERSISTENCE_UNAVAILABLE", "Database is unavailable");
     }
     if (typeof taskId !== "string" || taskId.trim().length === 0) {
       return failure("INVALID_INPUT", "Task identifier is invalid");
     }
-    const task = taskRepository.list().find((candidate) => candidate.id === taskId);
+    const task = await rustTaskReader.get(taskId);
     if (!task) return failure("INVALID_INPUT", "Task was not found");
     if (task.riskTier !== 1) {
       return failure("APPROVAL_REQUIRED", "Fixture runner supports risk-tier 1 tasks only");
@@ -346,13 +346,13 @@ function registerIpc(): void {
   });
   ipcMain.handle("tasks:run-owned-fixture", async (event, taskId: unknown): Promise<IpcResult<OwnedFixtureRunSummary>> => {
     if (!isTrustedSender(event)) return failure("UNTRUSTED_SENDER", "IPC sender rejected");
-    if (!taskRepository || !runRepository || !database) {
+    if (!rustTaskReader || !runRepository || !database) {
       return failure("PERSISTENCE_UNAVAILABLE", "Database is unavailable");
     }
     if (typeof taskId !== "string" || taskId.trim().length === 0) {
       return failure("INVALID_INPUT", "Task identifier is invalid");
     }
-    const task = taskRepository.list().find((candidate) => candidate.id === taskId);
+    const task = await rustTaskReader.get(taskId);
     if (!task) return failure("INVALID_INPUT", "Task was not found");
     if (task.riskTier !== 1) {
       return failure("APPROVAL_REQUIRED", "Owned fixture supports risk-tier 1 tasks only");
@@ -488,7 +488,7 @@ app.whenReady().then(async () => {
       platform: process.platform
     }), {
       args: ["serve", "--database", databasePath, "--enable-wal"],
-      requiredCapabilities: ["system.health", "capabilities.list", "tasks.create", "tasks.list"]
+      requiredCapabilities: ["system.health", "capabilities.list", "tasks.create", "tasks.get", "tasks.list"]
     });
     rustTaskCreator = new RustTaskCreator(rustCoreClient);
     rustTaskReader = new RustTaskReader(rustCoreClient);

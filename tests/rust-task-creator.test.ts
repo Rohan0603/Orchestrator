@@ -28,14 +28,17 @@ test("Rust task creator persists one TS-compatible task across retries and never
   try {
     const start = async () => RustCoreClient.start(coreExecutable, {
       args: ["serve", "--database", databasePath],
-      requiredCapabilities: ["tasks.create"]
+      requiredCapabilities: ["tasks.create", "tasks.get", "tasks.list"]
     });
     client = await start();
     const creator = new RustTaskCreator(client);
     const created = await creator.create(input);
     assert.equal(created.title, input.title);
     assert.equal(created.status, "intake");
-    assert.deepEqual(await new RustTaskReader(client).list(), [created]);
+    const reader = new RustTaskReader(client);
+    assert.deepEqual(await reader.list(), [created]);
+    assert.deepEqual(await reader.get(created.id), created);
+    assert.equal(await reader.get("missing-task"), null);
 
     const typescriptBaseline = new TaskRepository(database).create(input);
     assert.deepEqual(typescriptBaseline, created, "the old TypeScript writer must recognize the Rust command hash and return the existing row");

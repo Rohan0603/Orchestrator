@@ -24,6 +24,28 @@ function isTask(value: unknown): value is Task {
 export class RustTaskReader {
   public constructor(private readonly core: RustCoreClient) {}
 
+  public async get(taskId: string): Promise<Task | null> {
+    const request: Request = {
+      protocolVersion: 1,
+      kind: "request",
+      messageId: randomUUID(),
+      correlationId: randomUUID(),
+      causationId: null,
+      sender: { id: "typescript-client", role: "client" },
+      method: "tasks.get",
+      payload: { taskId }
+    };
+    const response: Response = await this.core.request(request);
+    if (!response.ok) {
+      throw new RustCoreClientError(response.error.code, response.error.message);
+    }
+    if (response.result === null) return null;
+    if (!isTask(response.result)) {
+      throw new RustCoreClientError("INVALID_TASK_RESPONSE", "Rust core returned an invalid task");
+    }
+    return response.result;
+  }
+
   public async list(): Promise<Task[]> {
     const request: Request = {
       protocolVersion: 1,
