@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
 import { app, BrowserWindow } from "electron";
+import Database from "better-sqlite3";
 
 const directory = mkdtempSync(join(tmpdir(), "orchestrator-ipc-"));
 const rendererPath = join(directory, "fixture.html");
@@ -36,6 +37,14 @@ test("real second WebContents is rejected before task mutation", async () => {
         resolve();
       }
     });
+
+    const database = new Database(join(directory, "user-data", "orchestrator.db"), { readonly: true });
+    try {
+      const journalMode = database.pragma("journal_mode", { simple: true });
+      assert.equal(journalMode, "wal");
+    } finally {
+      database.close();
+    }
 
     const created = await primary.webContents.executeJavaScript(
       `window.orchestrator.createTask({

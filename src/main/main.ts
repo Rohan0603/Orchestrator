@@ -487,7 +487,7 @@ app.whenReady().then(async () => {
       appPath: app.getAppPath(),
       platform: process.platform
     }), {
-      args: ["serve", "--database", databasePath],
+      args: ["serve", "--database", databasePath, "--enable-wal"],
       requiredCapabilities: ["system.health", "capabilities.list", "tasks.create", "tasks.list"]
     });
     rustTaskCreator = new RustTaskCreator(rustCoreClient);

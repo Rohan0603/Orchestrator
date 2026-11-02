@@ -244,7 +244,7 @@ export async function runCli(args: readonly string[], io: CliIO = defaultIO): Pr
       appPath: app.getAppPath(),
       platform: process.platform
     }), {
-      args: ["serve", "--database", databasePath],
+      args: ["serve", "--database", databasePath, "--enable-wal"],
       requiredCapabilities: ["system.health", "capabilities.list", "tasks.create"]
     });
     await execute(database, createOrchestratorSdk(database), new RustTaskCreator(rustCoreClient), remaining, io);

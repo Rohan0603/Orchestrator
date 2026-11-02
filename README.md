@@ -210,12 +210,12 @@ compatible Windows SDK.
 `npm run package:win` builds the application and creates an unsigned Windows
 x64 Electron package under `out/` using project-local Electron Packager.
 The package includes the Electron-ABI-149 native SQLite binding and the Rust
-runtime at `resources/orchestrator-core.exe`. The Rust runtime implements
-framed IPC and can validate an explicitly configured existing schema-13
-database with `serve --database <path>`. It does not yet own application
-lifecycle writes or get launched by Electron. WAL stays off unless
-`--enable-wal` is explicitly selected. Packaging inclusion is defined but not
-release-qualified.
+runtime at `resources/orchestrator-core.exe`. Electron launches the core over
+framed IPC against the migrated schema-13 database. Rust owns task creation and
+the Electron task-list read; other lifecycle writes remain on the TypeScript
+conformance baseline. Electron and the headless CLI explicitly select WAL after
+Rust validates the existing database. Packaged compatibility and task-storage
+smokes pass; full production cutover qualification remains open.
 
 Use `npm run build:rust-core` to build the Rust executable and
 `npm run test:rust-core` to run the Rust unit tests and Node-launched runtime

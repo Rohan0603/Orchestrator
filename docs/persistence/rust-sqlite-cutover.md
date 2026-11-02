@@ -21,13 +21,15 @@ validation fails. The hello reports the validated application schema version;
 `system.health` additionally reports the bundled SQLite source version and
 journal mode.
 
-WAL is off by default. The explicit `--enable-wal` startup option changes the
-database journal mode only after the existing-file compatibility gate has
-passed. `DatabaseStore::checkpoint_wal` uses a truncating checkpoint and fails
-closed if SQLite reports a blocked checkpoint. Packaged Windows x64 validation
-is required before application configuration selects this option by default.
-Once explicitly enabled, SQLite's journal mode persists in the database; a
-later startup without the flag leaves that mode intact.
+The core's standalone default remains the database's existing journal mode.
+The Electron application and headless CLI pass `--enable-wal`; Rust changes the
+mode only after the existing-file compatibility gate has passed. The packaged
+Windows x64 compatibility smoke verified default-mode open, explicit WAL,
+checkpoint/reopen behavior, task create/list and SQLite 3.54.1 under Electron
+44.9.3/ABI 149. `DatabaseStore::checkpoint_wal` uses a truncating checkpoint
+and fails closed if SQLite reports a blocked checkpoint. Once enabled,
+SQLite's journal mode persists in the database; the Electron and CLI startup
+flags reassert WAL on each open.
 
 ## Transaction and backup behavior
 
