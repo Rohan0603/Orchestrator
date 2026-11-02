@@ -16,7 +16,7 @@ The trusted Electron main process (or another trusted local Node host) starts th
 
 The OS trust boundary is the parent process and its private inherited pipe handles. The `sender` tuple is pinned to the identity negotiated in `hello` and checked on every envelope, but it is correlation metadata; it is not treated as independent OS authentication. Any future host that can share a pipe with an untrusted local process must add and qualify a separate OS-authenticated boundary before use.
 
-An interrupted frame, malformed response, request timeout, or unexpected child exit poisons that client instance. It fails all outstanding requests and closes/terminates only the owned child; it does not resume a partial frame, retry a request, or replay a potentially completed effect. Reconnection means starting a new child and completing a fresh handshake. Client queues are bounded to 32 pending requests and 4 MiB of encoded pending request frames by default (both configurable to positive finite limits); each startup, request, and shutdown operation has a finite deadline. Queue saturation is rejected before enqueue. The implementation supports health and capability queries only at this migration stage; registered but unmigrated methods return `NOT_IMPLEMENTED`.
+An interrupted frame, malformed response, request timeout, or unexpected child exit poisons that client instance. It fails all outstanding requests and closes/terminates only the owned child; it does not resume a partial frame, retry a request, or replay a potentially completed effect. Reconnection means starting a new child and completing a fresh handshake. Client queues are bounded to 32 pending requests and 4 MiB of encoded pending request frames by default (both configurable to positive finite limits); each startup, request, and shutdown operation has a finite deadline. Queue saturation is rejected before enqueue. At this migration stage, Rust supports health and capability queries, `tasks.create`, and `tasks.list`; other registered methods remain `NOT_IMPLEMENTED` until their migration issues deliver them.
 
 Payloads over the limit must be stored as artifacts and represented by an artifact reference (`artifactId`, `uri`, `sha256`, `sizeBytes`, `mediaType`). Receivers verify the hash and size when reading. A local path is metadata, not authorization to read arbitrary files.
 
@@ -47,10 +47,10 @@ The initial method registry is grouped by domain:
 | `projects.create` | project metadata | project | TypeScript SDK |
 | `projects.get` | `{ projectId }` | project or null | TypeScript SDK |
 | `projects.list` | `{}` | project array | TypeScript SDK |
-| `tasks.create` | CreateTaskInput | task | TypeScript SDK |
+| `tasks.create` | CreateTaskInput | task | Rust atomic adapter; TypeScript SDK conformance baseline |
 | `tasks.update` | `{ taskId, content }` | task | TypeScript SDK |
 | `tasks.get` | `{ taskId }` | task or null | TypeScript SDK |
-| `tasks.list` | `{}` | task array | TypeScript SDK |
+| `tasks.list` | `{}` | task array | Rust full Task projection; TypeScript SDK conformance baseline |
 | `tasks.runs.list` | `{ taskId }` | run/attempt history | TypeScript SDK |
 | `tasks.revisions.list` | `{ taskId }` | revision history | TypeScript SDK |
 | `tasks.dependencies.add` | `{ taskId, dependsOnTaskId }` | dependency | TypeScript SDK |

@@ -41,12 +41,13 @@ validation, and payload validation remain required boundaries.
 
 The Rust migration remains incremental. Electron initializes the existing
 schema-13 database, then starts one Rust core process on the same path. The
-Electron UI, GitHub-import, and headless CLI task-create paths now route task creation to Rust,
+Electron UI task listing and task creation now route through Rust. GitHub
+issue import and headless CLI task creation also use the Rust task writer,
 which owns the atomic task/revision/idempotency/audit/outbox write set. The
 TypeScript task repository does not serve those production entrypoints. Other
 lifecycle writes remain on the TypeScript conformance baseline until their
 ordered migrations. The Rust connection validates the schema and provides
-explicit WAL/checkpoint, backup, transaction, and task-read parity primitives.
+explicit WAL/checkpoint, backup, transaction, and full task-read parity.
 No application path may let both backends write the same authoritative
 responsibility. See
 [`persistence/rust-sqlite-cutover.md`](persistence/rust-sqlite-cutover.md).

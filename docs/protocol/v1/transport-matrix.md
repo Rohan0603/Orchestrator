@@ -1,6 +1,6 @@
 # Core IPC v1 transport and fault matrix
 
-This matrix records the behavior exercised by the ORC-36 implementation. It describes the current health/capability-only Rust slice; other registered methods remain `NOT_IMPLEMENTED` until their migration issues deliver them.
+This matrix records the behavior exercised by the Rust v1 transport through ORC-37. The core supports health/capability queries and the `tasks.create`/`tasks.list` persistence slice; other registered methods remain `NOT_IMPLEMENTED` until their migration issues deliver them.
 
 ## Compatibility and fault behavior
 
@@ -10,7 +10,8 @@ This matrix records the behavior exercised by the ORC-36 implementation. It desc
 | Incompatible protocol major or missing/unverified required capability | Rust integration and client incompatible-handshake tests | Startup rejects; no request is served |
 | Request before hello | Rust integration test | Process rejects the frame and does not dispatch it |
 | Zero, oversized, truncated, invalid UTF-8, or malformed JSON frame | Rust integration test | Protocol failure; no dispatch |
-| Registered method without a Rust adapter | Frozen `request.tasks.list.json` real transport fixture | Structured `NOT_IMPLEMENTED`, with no state mutation |
+| Supported task method without an attached database | `scripts/rust-core-integration.test.mjs`: create and list without database | Structured `DATABASE_UNAVAILABLE`; no TypeScript fallback |
+| Registered method without a Rust adapter | Unsupported `tasks.get` mandatory-capability handshake test | Startup rejects the unverified capability; requests cannot be served |
 | Unknown method | Rust IPC dispatch implementation | Structured `METHOD_NOT_FOUND` |
 | Backend executable missing or startup deadline expires | TypeScript client tests | `start()` rejects and releases any child it created |
 | Partial/late request response or request deadline | TypeScript client timeout test | Transport is poisoned, owned child is terminated, and all pending requests fail; no retry |

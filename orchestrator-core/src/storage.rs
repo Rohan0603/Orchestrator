@@ -56,14 +56,22 @@ pub struct AuditEvent {
     pub created_at: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TaskRecord {
     pub id: String,
+    pub project_id: Option<String>,
+    pub parent_task_id: Option<String>,
     pub title: String,
     pub description: String,
     pub acceptance_criteria: Vec<String>,
     pub risk_tier: u8,
     pub status: String,
+    pub assigned_worker_id: Option<String>,
+    pub skill_ids: Vec<String>,
+    pub mcp_server_ids: Vec<String>,
+    pub plugin_ids: Vec<String>,
+    pub token_budget: Option<i64>,
     pub created_at: String,
 }
 
@@ -591,36 +599,65 @@ impl DatabaseStore {
         let mut statement = self
             .connection
             .prepare(
-                "SELECT id, title, description, acceptance_criteria, risk_tier, status, created_at FROM tasks ORDER BY created_at DESC",
+                "SELECT id, project_id, parent_task_id, title, description, acceptance_criteria, risk_tier, status, assigned_worker_id, skill_ids, mcp_server_ids, plugin_ids, token_budget, created_at FROM tasks ORDER BY created_at DESC",
             )
             .map_err(StoreError::Operation)?;
         let rows = statement
             .query_map([], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<String>>(2)?,
                     row.get::<_, String>(3)?,
-                    row.get::<_, i64>(4)?,
+                    row.get::<_, String>(4)?,
                     row.get::<_, String>(5)?,
-                    row.get::<_, String>(6)?,
+                    row.get::<_, i64>(6)?,
+                    row.get::<_, String>(7)?,
+                    row.get::<_, Option<String>>(8)?,
+                    row.get::<_, String>(9)?,
+                    row.get::<_, String>(10)?,
+                    row.get::<_, String>(11)?,
+                    row.get::<_, Option<i64>>(12)?,
+                    row.get::<_, String>(13)?,
                 ))
             })
             .map_err(StoreError::Operation)?;
         let mut tasks = Vec::new();
         for row in rows {
-            let (id, title, description, criteria_json, risk_tier, status, created_at) =
-                row.map_err(StoreError::Operation)?;
-            let acceptance_criteria =
-                serde_json::from_str(&criteria_json).map_err(|_| StoreError::InvalidTaskRow)?;
-            let risk_tier = u8::try_from(risk_tier).map_err(|_| StoreError::InvalidTaskRow)?;
-            tasks.push(TaskRecord {
+            let (
                 id,
+                project_id,
+                parent_task_id,
                 title,
                 description,
-                acceptance_criteria,
+                criteria_json,
                 risk_tier,
                 status,
+                assigned_worker_id,
+                skill_ids_json,
+                mcp_server_ids_json,
+                plugin_ids_json,
+                token_budget,
+                created_at,
+            ) = row.map_err(StoreError::Operation)?;
+            tasks.push(TaskRecord {
+                id,
+                project_id,
+                parent_task_id,
+                title,
+                description,
+                acceptance_criteria: serde_json::from_str(&criteria_json)
+                    .map_err(|_| StoreError::InvalidTaskRow)?,
+                risk_tier: u8::try_from(risk_tier).map_err(|_| StoreError::InvalidTaskRow)?,
+                status,
+                assigned_worker_id,
+                skill_ids: serde_json::from_str(&skill_ids_json)
+                    .map_err(|_| StoreError::InvalidTaskRow)?,
+                mcp_server_ids: serde_json::from_str(&mcp_server_ids_json)
+                    .map_err(|_| StoreError::InvalidTaskRow)?,
+                plugin_ids: serde_json::from_str(&plugin_ids_json)
+                    .map_err(|_| StoreError::InvalidTaskRow)?,
+                token_budget,
                 created_at,
             });
         }
@@ -907,7 +944,7 @@ mod tests {
         let connection = Connection::open(path).expect("create fixture database");
         connection.execute_batch(
             "CREATE TABLE schema_version(version INTEGER NOT NULL);
-             CREATE TABLE tasks(id TEXT PRIMARY KEY NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL, acceptance_criteria TEXT NOT NULL, risk_tier INTEGER NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL);
+             CREATE TABLE tasks(id TEXT PRIMARY KEY NOT NULL, project_id TEXT, parent_task_id TEXT, title TEXT NOT NULL, description TEXT NOT NULL, acceptance_criteria TEXT NOT NULL, risk_tier INTEGER NOT NULL, status TEXT NOT NULL, assigned_worker_id TEXT, skill_ids TEXT NOT NULL DEFAULT '[]', mcp_server_ids TEXT NOT NULL DEFAULT '[]', plugin_ids TEXT NOT NULL DEFAULT '[]', token_budget INTEGER, created_at TEXT NOT NULL);
              CREATE TABLE runs(id TEXT PRIMARY KEY NOT NULL, task_id TEXT NOT NULL REFERENCES tasks(id), state TEXT NOT NULL, route_id TEXT, recovery_state TEXT NOT NULL, created_at TEXT NOT NULL);
              CREATE TABLE attempts(id TEXT PRIMARY KEY NOT NULL, run_id TEXT NOT NULL REFERENCES runs(id), outcome TEXT NOT NULL, worker_report TEXT, created_at TEXT NOT NULL);
              CREATE TABLE approvals(id TEXT PRIMARY KEY NOT NULL, run_id TEXT NOT NULL REFERENCES runs(id), action_digest TEXT NOT NULL, expires_at TEXT NOT NULL, consumed_at TEXT, context_json TEXT NOT NULL DEFAULT '{}', policy_version TEXT NOT NULL DEFAULT 'policy-v1');
@@ -1224,36 +1261,29 @@ mod tests {
         .expect("parse task-read fixture");
         let setup = Connection::open(&path).expect("open task fixture");
         setup.execute(
-            "INSERT INTO tasks(id, title, description, acceptance_criteria, risk_tier, status, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT INTO tasks(id, project_id, parent_task_id, title, description, acceptance_criteria, risk_tier, status, assigned_worker_id, skill_ids, mcp_server_ids, plugin_ids, token_budget, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             rusqlite::params![
                 fixture["id"].as_str().unwrap(),
+                fixture["projectId"].as_str(),
+                fixture["parentTaskId"].as_str(),
                 fixture["title"].as_str().unwrap(),
                 fixture["description"].as_str().unwrap(),
                 serde_json::to_string(&fixture["acceptanceCriteria"]).unwrap(),
                 fixture["riskTier"].as_i64().unwrap(),
                 fixture["status"].as_str().unwrap(),
+                fixture["assignedWorkerId"].as_str(),
+                serde_json::to_string(&fixture["skillIds"]).unwrap(),
+                serde_json::to_string(&fixture["mcpServerIds"]).unwrap(),
+                serde_json::to_string(&fixture["pluginIds"]).unwrap(),
+                fixture["tokenBudget"].as_i64(),
                 fixture["createdAt"].as_str().unwrap(),
             ],
         ).expect("insert golden task");
         drop(setup);
         let store = DatabaseStore::open_existing(&path).expect("supported schema should open");
         let tasks = store.list_tasks().expect("read task rows");
-        let expected_criteria: Vec<String> =
-            serde_json::from_value(fixture["acceptanceCriteria"].clone()).unwrap();
         assert_eq!(tasks.len(), 1);
-        assert_eq!(tasks[0].id, fixture["id"].as_str().unwrap());
-        assert_eq!(tasks[0].title, fixture["title"].as_str().unwrap());
-        assert_eq!(
-            tasks[0].description,
-            fixture["description"].as_str().unwrap()
-        );
-        assert_eq!(tasks[0].acceptance_criteria, expected_criteria);
-        assert_eq!(
-            tasks[0].risk_tier,
-            fixture["riskTier"].as_u64().unwrap() as u8
-        );
-        assert_eq!(tasks[0].status, fixture["status"].as_str().unwrap());
-        assert_eq!(tasks[0].created_at, fixture["createdAt"].as_str().unwrap());
+        assert_eq!(serde_json::to_value(&tasks[0]).unwrap(), fixture);
         drop(store);
         std::fs::remove_file(path).expect("remove fixture");
     }
