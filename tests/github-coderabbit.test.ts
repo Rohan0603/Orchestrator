@@ -50,13 +50,14 @@ test("GitHub issue import, idempotency, status sync, and conflict are durable", 
   };
   const service = new GitHubSyncService(port, {
     create: async (input) => tasks.create(input),
-    get: (taskId) => tasks.get(taskId),
+    get: async (taskId) => tasks.get(taskId),
     updateStatus: (taskId, status) => tasks.updateStatus(taskId, status)
   }, links);
   const imported = await service.importIssue("acme/repo", remote, "project-1", "item-1");
   const repeated = await service.importIssue("acme/repo", remote, "project-1", "item-1");
   assert.equal(imported.action, "imported");
   assert.equal(repeated.action, "synced");
+  assert.deepEqual(repeated.task, imported.task);
   assert.equal(tasks.list().length, 1);
   tasks.updateStatus(imported.task.id, "completed");
   const synced = await service.syncTask(tasks.get(imported.task.id)!, "verification passed");
