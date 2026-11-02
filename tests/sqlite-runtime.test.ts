@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import test from "node:test";
 import Database from "better-sqlite3";
 import { createDispatchRecord, validateProgressEvent } from "../src/dispatch/dispatch-contract";
@@ -428,6 +429,44 @@ test("schema-12 task rows receive an immutable revision when upgraded", () => {
     assert.equal(JSON.parse(revisions[0]?.snapshotJson ?? "{}").title, task.title);
     assert.equal(scalar<{version: number}>(database, "SELECT version FROM schema_version").version, 13);
   });
+});
+
+test("Rust migrates a TypeScript schema-12 database with matching task-revision bytes", () => {
+  const directory = mkdtempSync(join(tmpdir(), "orchestrator-rust-migration-parity-"));
+  const path = join(directory, "parity.db");
+  const database = openDatabase(path);
+  try {
+    const task = new TaskRepository(database).create({
+      title: "Cross-runtime migration",
+      description: "Preserve serialized revision bytes",
+      acceptanceCriteria: ["same JSON", "same SHA-256"],
+      riskTier: 1
+    });
+    const expected = new TaskRepository(database).revisions(task.id)[0];
+    assert.ok(expected);
+    database.exec("DROP TABLE task_commands; DROP TABLE task_dependencies; DROP TABLE task_revisions;");
+    database.prepare("UPDATE schema_version SET version=12").run();
+    database.close();
+
+    const executable = resolve("target", "debug", process.platform === "win32" ? "orchestrator-core.exe" : "orchestrator-core");
+    const output = execFileSync(executable, ["migrate", "--database", path], {encoding: "utf8", windowsHide: true});
+    assert.deepEqual(JSON.parse(output), {schemaVersion: 13});
+
+    const migrated = new Database(path);
+    try {
+      const actual = new TaskRepository(migrated).revisions(task.id)[0];
+      assert.ok(actual);
+      assert.equal(actual.snapshotJson, expected.snapshotJson);
+      assert.equal(actual.contentHash, expected.contentHash);
+      assert.equal(actual.createdAt, expected.createdAt);
+      assert.equal(scalar<{version: number}>(migrated, "SELECT version FROM schema_version").version, 13);
+    } finally {
+      migrated.close();
+    }
+  } finally {
+    if (database.open) database.close();
+    rmSync(directory, {recursive: true, force: true});
+  }
 });
 
 test("repositories persist task, approval, dispatch, progress, and evidence state", () => {
