@@ -122,13 +122,14 @@ define one responsibility, prove parity on separate database copies, qualify
 the restart/failure path, then route it to Rust while disabling the TypeScript
 writer for that responsibility. The Rust process tests now kill a worker with
 an open transaction after its audit/outbox writes and confirm both roll back;
-they also kill a worker after task creation commits but before it reports a
-result, then retry through a fresh Rust Core and confirm one task, revision,
-audit pair, and outbox pair. These deterministic checks cover storage rollback
-and idempotent replay; they do not kill the production IPC server between
-commit and writing its response frame. WAL-default selection, the remaining
-lifecycle repositories, that production IPC crash point, and full release
-cutover remain open gates.
+the production IPC test submits a real `tasks.create` frame, observes its
+committed idempotency record without reading stdout, kills the Rust Core, then
+retries through a fresh Rust Core and confirms one task, revision, audit pair,
+and outbox pair. These deterministic checks cover storage rollback and
+client-visible response loss after commit. The IPC test does not instrument the
+exact `write_frame` instruction boundary. WAL-default selection, the remaining
+lifecycle repositories, exact response-write timing, and full release cutover
+remain open gates.
 
 The Windows x64 packaged compatibility smoke was run with Electron 44.9.3 and
 Node ABI 149. The packaged Rust executable reported bundled SQLite 3.54.1,
