@@ -3,6 +3,7 @@ import { backfillTaskRevisions } from "./task-revisions";
 import migrationSql from "./migrations.json";
 
 const migrations: readonly string[] = migrationSql;
+export const CURRENT_SCHEMA_VERSION = migrations.length;
 
 export function applyMigrations(database: Database.Database): void {
   database.exec("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)");

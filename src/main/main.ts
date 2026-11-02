@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import path from "node:path";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { openDatabase, PersistenceError } from "../persistence/database";
+import { initializeDatabaseWithRustMigration } from "./rust-core-migration";
 import type Database from "better-sqlite3";
 import { TaskRepository } from "../persistence/task-repository";
 import { RunRepository } from "../persistence/run-repository";
@@ -477,16 +478,17 @@ function createWindow(): BrowserWindow {
 app.whenReady().then(async () => {
   try {
     const databasePath = path.join(app.getPath("userData"), "orchestrator.db");
-    database = openDatabase(databasePath);
-    taskRepository = new TaskRepository(database);
-    runRepository = new RunRepository(database);
-    githubRepository = new GitHubRepository(database);
-    rustCoreClient = await RustCoreClient.start(resolveRustCoreExecutablePath({
+    const rustCorePath = resolveRustCoreExecutablePath({
       isPackaged: app.isPackaged,
       resourcesPath: process.resourcesPath,
       appPath: app.getAppPath(),
       platform: process.platform
-    }), {
+    });
+    database = initializeDatabaseWithRustMigration(rustCorePath, databasePath);
+    taskRepository = new TaskRepository(database);
+    runRepository = new RunRepository(database);
+    githubRepository = new GitHubRepository(database);
+    rustCoreClient = await RustCoreClient.start(rustCorePath, {
       args: ["serve", "--database", databasePath, "--enable-wal"],
       requiredCapabilities: ["system.health", "capabilities.list", "tasks.create", "tasks.get", "tasks.list"]
     });

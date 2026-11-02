@@ -2,24 +2,28 @@
 
 ## Current support boundary
 
-`orchestrator-core` uses `rusqlite` 0.41.1 with bundled SQLite. This slice
-accepts only the existing TypeScript schema version 13 stored in the
-`schema_version` table. It does not create, migrate, or rewrite a database on
-startup and does not use `PRAGMA user_version` as a second schema authority.
-Opening a configured database requires an existing file, a successful SQLite
-quick check and foreign-key check, one schema version row with value 13, and the
-core task/lifecycle, audit, outbox, evidence, and recovery tables.
+`orchestrator-core` uses `rusqlite` 0.41.1 with bundled SQLite. Its `serve`
+command accepts only schema version 13 stored in the `schema_version` table.
+Electron first invokes the Rust `migrate` command to create or upgrade the
+database, then opens it through TypeScript in validation-only mode. The Rust
+serve process does not migrate the database or use PRAGMA user_version as a
+second schema authority. Opening a configured database
+requires an existing file, a successful SQLite quick check and foreign-key
+check, one schema version row with value 13, and the core task/lifecycle, audit,
+outbox, evidence, and recovery tables.
 The compatibility gate also checks the columns consumed by the storage and
 parity operations, including the event correlation/idempotency fields and
 outbox retry fields.
 
-The Rust process owns one SQLite connection. It enables foreign keys on that
-connection and sets a 250 ms busy timeout. Electron first opens the current
-database through the TypeScript migration layer, then starts Rust against the
-same path. The configured database is rejected before protocol readiness when
-validation fails. The hello reports the validated application schema version;
-`system.health` additionally reports the bundled SQLite source version and
-journal mode.
+The Rust migration command validates and applies the shared versioned SQL
+migrations transactionally. After it succeeds, TypeScript opens the existing
+database without applying migrations and checks that exactly one current
+schema-version row is present. Electron then starts the Rust service against
+that path. The Rust process owns one SQLite connection, enables foreign keys
+on that connection, and sets a 250 ms busy timeout. The configured database is
+rejected before protocol readiness when validation fails. The hello reports
+the validated application schema version; `system.health` additionally reports
+the bundled SQLite source version and journal mode.
 
 The core's standalone default remains the database's existing journal mode.
 The Electron application and headless CLI pass `--enable-wal`; Rust changes the
@@ -61,9 +65,10 @@ rollback. It does not simulate a physically exhausted Windows volume.
 1. Stop the Electron application and ensure no process is using its database.
 2. Create and verify a backup through the currently supported TypeScript
    backup workflow. Retain the source and backup as separate files.
-3. Run the packaged Rust compatibility check against a disposable copy first.
-   Confirm schema version 13, bundled SQLite source version, journal mode, and
-   integrity checks before selecting any Rust-owned service.
+3. On a disposable copy, run the Rust `migrate --database <path>` command and
+   then the packaged Rust compatibility check. Confirm schema version 13,
+   bundled SQLite source version, journal mode, and integrity checks before
+   selecting any Rust-owned service.
 4. The first cutover responsibility is `tasks.create`: Electron UI, GitHub
    issue import, and headless CLI requests go through Rust IPC. Rust atomically
    writes the task, revision 1, optional command key, audit facts and outbox
@@ -90,8 +95,9 @@ rollback. It does not simulate a physically exhausted Windows volume.
 
 ## Production cutover status
 
-ORC-37 transfers bounded `tasks.create`, Electron `tasks.list`, and Electron
-fixture/GitHub `tasks.get` responsibilities.
+ORC-37 transfers startup schema migration ownership and bounded
+`tasks.create`, Electron `tasks.list`, and Electron fixture/GitHub `tasks.get`
+responsibilities.
 The core advertises each frozen v1 method as supported only after implementing
 its behavior. Electron startup fails closed if the core executable or required
 handshake is unavailable; task creation, listing, and fixture/GitHub task lookup
