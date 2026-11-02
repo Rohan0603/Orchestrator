@@ -42,3 +42,12 @@
 - Track verified defects as focused linked issues with file/line, reproduction, impact, and regression criteria. Preserve decision provenance and distinguish proposed from approved decisions.
 - Before handoff, record commands, exit results/test counts, evidence paths, remaining gaps, and uncommitted status; read back Linear changes. Mark Done only when acceptance conditions are met. Fixture tests do not prove live-provider, abrupt-crash, independent-review, or release qualification.
 - Keep credentials and sensitive payloads out of Linear. Link the active issues, relevant decisions, source revision/branch, evidence, and blockers so another agent can resume without chat history.
+
+## Linear executor labels and issue lifecycle — all agents
+
+- Every actionable issue in the AgentConductor project must have exactly one label from the project's single-select `Agent Executor` group: `ChatGPT`, `Codex`, or `Work`. Use the existing `RBRN / Executor` group for Daemon Reborn issues. Do not apply one project's role-label group to another project.
+- Choose `ChatGPT` for research, feasibility, architecture decisions, governance, and decision-ready reviews; `Codex` for bounded repository implementation, tests, and documentation; and `Work` for broad multi-step work, cross-application changes, Windows UI/manual validation, packaging, or end-to-end qualification. If the owner or role is unclear, ask before creating or dispatching the issue.
+- Any agent creating an issue must search for duplicates, select the correct team and project, write the outcome, scope, acceptance criteria, required proof, and dependencies, set the appropriate parent/related links and priority, and apply exactly one executor label before saving. Never create an actionable issue with an unspecified executor.
+- Before implementation, fetch the full issue and its comments, parent and child issues, blocking/blocked-by relations, and linked project handbooks, decisions, and specifications. Confirm prerequisites are complete; otherwise record the blocker in Linear and do not begin dependent work.
+- Move the issue to the active status when work starts. Keep Linear current as scope, findings, dependencies, and blockers change. Before handoff, attach or link reproducible evidence: commands and exit results, test counts, artifact paths, and the relevant branch, commit, or pull request. Read back the saved issue and its evidence links. Mark Done only after acceptance criteria are supported by that proof; use a blocked status when a prerequisite prevents completion.
+
