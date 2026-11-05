@@ -175,6 +175,15 @@ test("approval rejects expiry and consumed approvals", () => {
     ),
     "APPROVAL_CONSUMED"
   );
+  // A stored grant may be malformed even when creation-time validation was correct.
+  // Never authorize when Date.parse() produces NaN (or otherwise invalid expiry).
+  for (const expiresAt of ["", "not-a-date", "Infinity", "2026-13-01T00:00:00.000Z"]) {
+    assert.equal(
+      rejectionReason(checkApproval({ ...base, expiresAt, consumedAt: null }, action, "policy-v1")),
+      "APPROVAL_EXPIRED",
+      `Malformed persisted approval expiry must fail closed: ${JSON.stringify(expiresAt)}`
+    );
+  }
 });
 
 test("route evaluation blocks missing and unsatisfied conditional capabilities", () => {
