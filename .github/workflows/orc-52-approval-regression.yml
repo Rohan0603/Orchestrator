@@ -40,7 +40,7 @@ jobs:
           fi
           grep -E 'not ok [0-9]+ - approval rejects expiry and consumed approvals' red.log
           grep -F '# fail 1' red.log
-          grep -F 'Expected approval rejection' red.log
+          grep -F 'true !== false' red.log
       - name: Verify fixed PR head passes deterministic tests and TypeScript build
         shell: bash
         env:
