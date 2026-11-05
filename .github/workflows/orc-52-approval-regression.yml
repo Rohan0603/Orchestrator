@@ -1,0 +1,62 @@
+name: ORC-52 approval expiry RED-GREEN regression
+
+on:
+  pull_request:
+    paths:
+      - "src/policy/policy.ts"
+      - "tests/deterministic.test.ts"
+      - ".github/workflows/orc-52-approval-regression.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  approval-expiry-red-green:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Verify test-first commit fails for the intended approval bug
+        shell: bash
+        run: |
+          git checkout 9abecb963dee5e8cd6122b4035e7ae020282a4e5
+          npx tsc -p tsconfig.test.json
+          set +e
+          node --test --test-reporter=tap dist-test/tests/deterministic.test.js > red.log 2>&1
+          status=$?
+          set -e
+          cat red.log
+          if [ "$status" -eq 0 ]; then
+            echo "RED did not fail: regression test may not cover the bug"
+            exit 1
+          fi
+          grep -E 'not ok [0-9]+ - approval rejects expiry and consumed approvals' red.log
+          grep -F '# fail 1' red.log
+          grep -F 'Expected approval rejection' red.log
+      - name: Verify fixed PR head passes deterministic tests and TypeScript build
+        shell: bash
+        env:
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          git checkout "$PR_HEAD"
+          npx tsc -p tsconfig.test.json
+          node --test --test-reporter=tap dist-test/tests/deterministic.test.js | tee green.log
+          npm run build
+      - name: Upload bounded regression logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: orc-52-approval-regression
+          path: |
+            red.log
+            green.log
+          if-no-files-found: ignore
+          retention-days: 7
