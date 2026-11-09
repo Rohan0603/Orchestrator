@@ -227,7 +227,8 @@ export function checkApproval(
   policyVersion: string
 ): { readonly valid: true } | { readonly valid: false; readonly reason: ApprovalRejectionReason } {
   if (approval.consumedAt !== null) return { valid: false, reason: "APPROVAL_CONSUMED" };
-  if (Date.parse(approval.expiresAt) <= Date.now()) {
+  const expiration = Date.parse(approval.expiresAt);
+  if (!Number.isFinite(expiration) || expiration <= Date.now()) {
     return { valid: false, reason: "APPROVAL_EXPIRED" };
   }
   if (approval.policyVersion !== policyVersion) {
