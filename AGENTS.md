@@ -1,3 +1,17 @@
+# Orchestrator — GitHub Chief/Worker development workflow (2026-11-09)
+
+> This additive section supersedes the **legacy Linear task-tracking and executor-label** sections that appear below. All architectural boundaries for the **Orchestrator product itself** (lease-owned work, secure MCP tools, Electron IPC isolation, recovery, evidence/acceptance, Windows packaging and product-internal agent execution) remain in force. This is repository **development governance**, not a mandate to disable the Orchestrator product's agents.
+
+- **Project management:** GitHub repository Issues + a specifically selected, live-read GitHub Projects v2 board. This migration does not select or configure Projects; membership, Status, Priority, milestone/dependency mappings and migrated ORC issues are **NOT VERIFIED**. Legacy Linear references remain provenance, not a second current task queue.
+- **Development agent roles:** `chief` or `worker` (exactly one), optional `human` with `chief`, optional `metadata-bootstrap` only with `worker`. The owner manually invokes/schedules each development Chief/Worker agent; GitHub labels, Project transitions and Actions must **not** trigger models. Do not confuse the product's own runtime workers/leases with the governance role labels.
+- **First handoff:** Chief selects approved Project and metadata, writes `GITHUB METADATA SETUP`, and ensures independent read-back. If Projects API is inaccessible, a `worker + metadata-bootstrap` task may perform **metadata only** and return to Chief; no product implementation until separate Chief DoR and Project `Ready`.
+- **Full source-of-truth:** `docs/GITHUB_AGENT_GOVERNANCE.md` (latest approved template); for development workflow only, it supersedes old Linear instructions below. Product-specific safety/architecture/testing requirements remain binding.
+- **Branch:** `master`. No product code, credentials, Project fields or deployment settings are edited in this PR.
+
+---
+
+## Preserved original Orchestrator instructions
+
 # Orchestrator agent guide
 
 ## Source of truth
